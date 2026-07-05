@@ -157,7 +157,7 @@ def ensure_user_has_default_avatar(conn, username: str, *, randomize: bool = Tru
             """
             UPDATE users
                SET avatar_url = %s
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND (avatar_url IS NULL OR BTRIM(avatar_url) = '');
             """,
             (default_avatar_url, clean_username),
@@ -178,6 +178,7 @@ def create_user_with_keys(
     recovery_pin_hash: str | None = None,
     recovery_pin_set_at: datetime | None = None,
     field_encryption_settings: dict | None = None,
+    commit: bool = True,
 ) -> None:
     """
     Generate an RSA keypair for this user, encrypt the private key under raw_password,
@@ -224,7 +225,8 @@ def create_user_with_keys(
     # older databases that have not added avatar_url yet, while giving every
     # migrated/current new account a stored generated avatar immediately.
     ensure_user_has_default_avatar(conn, username)
-    conn.commit()
+    if commit:
+        conn.commit()
 
 def get_public_key_for_username(conn, username: str) -> str:
     """
@@ -232,16 +234,37 @@ def get_public_key_for_username(conn, username: str) -> str:
     """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT public_key FROM users WHERE username = %s;",
+            "SELECT public_key FROM users WHERE LOWER(username) = LOWER(%s);",
             (username,)
         )
         row = cur.fetchone()
     return row[0] if row else None
 
-def user_exists(conn, username: str) -> bool:
+def canonical_username(conn, username: str) -> str | None:
+    """Return the stored username for a case-insensitive username lookup."""
+    clean = str(username or "").strip()
+    if not clean:
+        return None
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM users WHERE username = %s LIMIT 1;", (username,))
-        return cur.fetchone() is not None
+        cur.execute("SELECT username FROM users WHERE LOWER(username) = LOWER(%s) LIMIT 1;", (clean,))
+        row = cur.fetchone()
+    return str(row[0]) if row and row[0] is not None else None
+
+
+def find_user_by_username_ci(conn, username: str, columns: str = "*"):
+    """Return one user row by case-insensitive username, using a controlled column list."""
+    clean = str(username or "").strip()
+    if not clean:
+        return None
+    safe_cols = str(columns or "*").strip()
+    # This helper is intentionally internal; callers pass static column strings.
+    with conn.cursor() as cur:
+        cur.execute(f"SELECT {safe_cols} FROM users WHERE LOWER(username) = LOWER(%s) LIMIT 1;", (clean,))
+        return cur.fetchone()
+
+
+def user_exists(conn, username: str) -> bool:
+    return canonical_username(conn, username) is not None
 
 def _users_column_exists(conn, column_name: str) -> bool:
     try:
@@ -250,7 +273,8 @@ def _users_column_exists(conn, column_name: str) -> bool:
                 """
                 SELECT 1
                   FROM information_schema.columns
-                 WHERE table_name = 'users'
+                 WHERE table_schema = 'public'
+                   AND table_name = 'users'
                    AND column_name = %s
                  LIMIT 1;
                 """,
@@ -260,6 +284,59 @@ def _users_column_exists(conn, column_name: str) -> bool:
     except Exception:
         return False
 
+
+
+
+def _table_column_exists(conn, table_name: str, column_name: str) -> bool:
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT 1
+                  FROM information_schema.columns
+                 WHERE table_schema = 'public'
+                   AND table_name = %s
+                   AND column_name = %s
+                 LIMIT 1;
+                """,
+                (table_name, column_name),
+            )
+            return cur.fetchone() is not None
+    except Exception:
+        return False
+
+
+def _current_auth_version_for_conn(conn, username: str) -> int:
+    if not username or not _users_column_exists(conn, "auth_version"):
+        return 0
+    with conn.cursor() as cur:
+        cur.execute("SELECT COALESCE(auth_version, 0) FROM users WHERE LOWER(username)=LOWER(%s) LIMIT 1;", (username,))
+        row = cur.fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def get_auth_version(username: str) -> int:
+    conn = get_db()
+    return _current_auth_version_for_conn(conn, username)
+
+
+def bump_auth_version(conn, username: str) -> int:
+    """Increment users.auth_version when present and return the new version."""
+    if not username or not _users_column_exists(conn, "auth_version"):
+        return 0
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            UPDATE users
+               SET auth_version = COALESCE(auth_version, 0) + 1,
+                   password_changed_at = CURRENT_TIMESTAMP
+             WHERE LOWER(username) = LOWER(%s)
+             RETURNING auth_version;
+            """,
+            (username,),
+        )
+        row = cur.fetchone()
+    return int(row[0] or 0) if row else 0
 
 def email_in_use(conn, email: str, exclude_user_id: int | None = None, settings: dict | None = None) -> bool:
     """Return True if `email` is already in use.
@@ -299,7 +376,7 @@ def ensure_user_has_keys(conn, username: str, raw_password: str) -> bool:
     """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT public_key, encrypted_private_key FROM users WHERE username = %s;",
+            "SELECT public_key, encrypted_private_key FROM users WHERE LOWER(username) = LOWER(%s);",
             (username,),
         )
         row = cur.fetchone()
@@ -325,7 +402,7 @@ def ensure_user_has_keys(conn, username: str, raw_password: str) -> bool:
                 upgraded = _encrypt_private_key_v2(plain, raw_password)
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE users SET encrypted_private_key = %s WHERE username = %s;",
+                        "UPDATE users SET encrypted_private_key = %s WHERE LOWER(username) = LOWER(%s);",
                         (upgraded, username),
                     )
                 conn.commit()
@@ -340,7 +417,7 @@ def ensure_user_has_keys(conn, username: str, raw_password: str) -> bool:
                 public_pem, encrypted_priv_blob = _generate_and_encrypt_rsa_keypair(raw_password)
                 with conn.cursor() as cur:
                     cur.execute(
-                        "UPDATE users SET public_key = %s, encrypted_private_key = %s WHERE username = %s;",
+                        "UPDATE users SET public_key = %s, encrypted_private_key = %s WHERE LOWER(username) = LOWER(%s);",
                         (public_pem, encrypted_priv_blob, username),
                     )
                 conn.commit()
@@ -355,7 +432,7 @@ def ensure_user_has_keys(conn, username: str, raw_password: str) -> bool:
     public_pem, encrypted_priv_blob = _generate_and_encrypt_rsa_keypair(raw_password)
     with conn.cursor() as cur:
         cur.execute(
-            "UPDATE users SET public_key = %s, encrypted_private_key = %s WHERE username = %s;",
+            "UPDATE users SET public_key = %s, encrypted_private_key = %s WHERE LOWER(username) = LOWER(%s);",
             (public_pem, encrypted_priv_blob, username),
         )
     conn.commit()
@@ -372,7 +449,7 @@ def get_encrypted_private_key_for_username(conn, username: str) -> str:
     """
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT encrypted_private_key FROM users WHERE username = %s;",
+            "SELECT encrypted_private_key FROM users WHERE LOWER(username) = LOWER(%s);",
             (username,)
         )
         row = cur.fetchone()
@@ -396,16 +473,111 @@ def store_auth_token(
         return
 
     conn = get_db()
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO auth_tokens (jti, username, session_id, token_type, expires_at, user_agent, ip_address)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (jti) DO NOTHING;
-            """,
-            (jti, username, session_id, token_type, expires_at, user_agent, ip_address),
-        )
+    store_auth_token_in_conn(
+        conn,
+        jti=jti,
+        username=username,
+        token_type=token_type,
+        expires_at=expires_at,
+        session_id=session_id,
+        user_agent=user_agent,
+        ip_address=ip_address,
+    )
     conn.commit()
+
+
+
+def store_auth_token_in_conn(
+    conn,
+    *,
+    jti: str,
+    username: str,
+    token_type: str,
+    expires_at: datetime | None,
+    session_id: str | None = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> None:
+    if not jti or not username or not token_type:
+        raise ValueError("jti, username, and token_type are required")
+    has_auth_version = _table_column_exists(conn, "auth_tokens", "auth_version")
+    auth_version = _current_auth_version_for_conn(conn, username) if has_auth_version else None
+    with conn.cursor() as cur:
+        if has_auth_version:
+            cur.execute(
+                """
+                INSERT INTO auth_tokens (jti, username, session_id, token_type, expires_at, user_agent, ip_address, auth_version)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (jti) DO NOTHING;
+                """,
+                (jti, username, session_id, token_type, expires_at, user_agent, ip_address, auth_version),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO auth_tokens (jti, username, session_id, token_type, expires_at, user_agent, ip_address)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (jti) DO NOTHING;
+                """,
+                (jti, username, session_id, token_type, expires_at, user_agent, ip_address),
+            )
+        if int(getattr(cur, "rowcount", 0) or 0) < 1:
+            raise RuntimeError("auth token insert did not persist")
+
+
+def create_auth_session_in_conn(conn, username: str, user_agent: str | None = None, ip_address: str | None = None) -> str:
+    if not username:
+        raise ValueError("username required")
+    sid = uuid.uuid4().hex
+    has_auth_version = _table_column_exists(conn, "auth_sessions", "auth_version")
+    auth_version = _current_auth_version_for_conn(conn, username) if has_auth_version else None
+    with conn.cursor() as cur:
+        if has_auth_version:
+            cur.execute(
+                """
+                INSERT INTO auth_sessions (session_id, username, last_seen_at, last_activity_at, user_agent, ip_address, auth_version)
+                VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s, %s)
+                ON CONFLICT (session_id) DO NOTHING;
+                """,
+                (sid, username, user_agent, ip_address, auth_version),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO auth_sessions (session_id, username, last_seen_at, last_activity_at, user_agent, ip_address)
+                VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s)
+                ON CONFLICT (session_id) DO NOTHING;
+                """,
+                (sid, username, user_agent, ip_address),
+            )
+        if int(getattr(cur, "rowcount", 0) or 0) < 1:
+            raise RuntimeError("auth session insert did not persist")
+    return sid
+
+
+def create_login_session_and_tokens(
+    username: str,
+    *,
+    access_jti: str,
+    access_expires_at: datetime | None,
+    refresh_jti: str,
+    refresh_expires_at: datetime | None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> str:
+    conn = get_db()
+    try:
+        sid = create_auth_session_in_conn(conn, username, user_agent=user_agent, ip_address=ip_address)
+        store_auth_token_in_conn(conn, jti=access_jti, username=username, token_type="access", expires_at=access_expires_at, session_id=sid, user_agent=user_agent, ip_address=ip_address)
+        store_auth_token_in_conn(conn, jti=refresh_jti, username=username, token_type="refresh", expires_at=refresh_expires_at, session_id=sid, user_agent=user_agent, ip_address=ip_address)
+        conn.commit()
+        return sid
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
 
 def revoke_auth_token(jti: str) -> None:
     """Revoke a specific token by JTI."""
@@ -434,7 +606,7 @@ def revoke_all_tokens_for_user(username: str, token_type: str | None = None) -> 
                 """
                 UPDATE auth_tokens
                    SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-                 WHERE username = %s
+                 WHERE LOWER(username) = LOWER(%s)
                    AND token_type = %s
                    AND revoked_at IS NULL;
                 """,
@@ -445,7 +617,7 @@ def revoke_all_tokens_for_user(username: str, token_type: str | None = None) -> 
                 """
                 UPDATE auth_tokens
                    SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-                 WHERE username = %s
+                 WHERE LOWER(username) = LOWER(%s)
                    AND revoked_at IS NULL;
                 """,
                 (username,),
@@ -468,10 +640,13 @@ def is_auth_token_revoked(jti: str) -> bool:
     with conn.cursor() as cur:
         cur.execute(
             """
-            SELECT t.revoked_at, t.expires_at, t.session_id, s.revoked_at, t.username
+            SELECT t.revoked_at, t.expires_at, t.session_id, s.revoked_at, t.username,
+                   COALESCE(t.auth_version, s.auth_version, 0), COALESCE(u.auth_version, 0)
               FROM auth_tokens t
               LEFT JOIN auth_sessions s
                      ON s.session_id = t.session_id
+              LEFT JOIN users u
+                     ON LOWER(u.username) = LOWER(t.username)
              WHERE t.jti = %s;
             """,
             (jti,),
@@ -482,7 +657,7 @@ def is_auth_token_revoked(jti: str) -> bool:
     if not row:
         return True
 
-    revoked_at, expires_at, session_id, session_revoked_at, token_username = row
+    revoked_at, expires_at, session_id, session_revoked_at, token_username, token_auth_version, user_auth_version = row
     if token_username:
         try:
             if not account_status_allows_auth(get_effective_account_status(token_username)):
@@ -491,6 +666,11 @@ def is_auth_token_revoked(jti: str) -> bool:
             # On DB errors, fail closed for token revocation checks.
             return True
     if revoked_at is not None:
+        return True
+    try:
+        if int(token_auth_version or 0) != int(user_auth_version or 0):
+            return True
+    except Exception:
         return True
     if expires_at is not None and expires_at <= now:
         return True
@@ -518,19 +698,8 @@ def is_auth_token_revoked(jti: str) -> bool:
 
 def create_auth_session(username: str, user_agent: str | None = None, ip_address: str | None = None) -> str:
     """Create a new auth session and return session_id."""
-    if not username:
-        raise ValueError("username required")
-    sid = uuid.uuid4().hex
     conn = get_db()
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            INSERT INTO auth_sessions (session_id, username, last_seen_at, last_activity_at, user_agent, ip_address)
-            VALUES (%s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, %s, %s)
-            ON CONFLICT (session_id) DO NOTHING;
-            """,
-            (sid, username, user_agent, ip_address),
-        )
+    sid = create_auth_session_in_conn(conn, username, user_agent=user_agent, ip_address=ip_address)
     conn.commit()
     return sid
 
@@ -581,20 +750,24 @@ def is_auth_session_active(
         if username:
             cur.execute(
                 """
-                SELECT revoked_at,
-                       COALESCE(last_activity_at, last_seen_at, created_at) AS last_act
-                  FROM auth_sessions
-                 WHERE session_id = %s AND username = %s;
+                SELECT s.revoked_at,
+                       COALESCE(s.last_activity_at, s.last_seen_at, s.created_at) AS last_act,
+                       COALESCE(s.auth_version, 0), COALESCE(u.auth_version, 0)
+                  FROM auth_sessions s
+                  LEFT JOIN users u ON LOWER(u.username) = LOWER(s.username)
+                 WHERE s.session_id = %s AND LOWER(s.username) = LOWER(%s);
                 """,
                 (session_id, username),
             )
         else:
             cur.execute(
                 """
-                SELECT revoked_at,
-                       COALESCE(last_activity_at, last_seen_at, created_at) AS last_act
-                  FROM auth_sessions
-                 WHERE session_id = %s;
+                SELECT s.revoked_at,
+                       COALESCE(s.last_activity_at, s.last_seen_at, s.created_at) AS last_act,
+                       COALESCE(s.auth_version, 0), COALESCE(u.auth_version, 0)
+                  FROM auth_sessions s
+                  LEFT JOIN users u ON LOWER(u.username) = LOWER(s.username)
+                 WHERE s.session_id = %s;
                 """,
                 (session_id,),
             )
@@ -603,6 +776,11 @@ def is_auth_session_active(
         return False
     revoked_at, last_act = row[0], row[1]
     if revoked_at is not None:
+        return False
+    try:
+        if int(row[2] or 0) != int(row[3] or 0):
+            return False
+    except Exception:
         return False
 
     # Idle timeout is enforced on client-activity, not on background refresh/polling.
@@ -666,12 +844,136 @@ def attach_session_to_token(username: str, jti: str, session_id: str) -> None:
             UPDATE auth_tokens
                SET session_id = %s
              WHERE jti = %s
-               AND username = %s
+               AND LOWER(username) = LOWER(%s)
                AND session_id IS NULL;
             """,
             (session_id, jti, username),
         )
     conn.commit()
+
+
+
+def apply_auth_risk_event(
+    username: str,
+    event: str,
+    *,
+    keep_current_sid: str | None = None,
+    revoke_all: bool = False,
+    conn=None,
+    commit: bool = True,
+) -> dict[str, int]:
+    """Apply a high-risk auth lifecycle event.
+
+    When ``conn`` is supplied with ``commit=False``, the caller can make the
+    account change, auth-version bump, and session/token revocation one atomic
+    transaction. Password-change timestamps are only updated for password
+    events; the broader ``auth_changed_at`` timestamp is used for all auth-risk
+    lifecycle events when the column exists.
+    """
+    username = str(username or "").strip()
+    event = str(event or "auth_risk_event").strip() or "auth_risk_event"
+    keep_current_sid = str(keep_current_sid or "").strip() or None
+    if not username:
+        return {"auth_version": 0, "revoked_sessions": 0, "revoked_tokens": 0}
+    own_conn = conn is None
+    conn = conn or get_db()
+    password_events = {"password_change", "password_reset", "admin_password_reset"}
+    try:
+        with conn.cursor() as cur:
+            if _users_column_exists(conn, "auth_version"):
+                set_parts = ["auth_version = COALESCE(auth_version, 0) + 1"]
+                if _users_column_exists(conn, "auth_changed_at"):
+                    set_parts.append("auth_changed_at = CURRENT_TIMESTAMP")
+                if event in password_events and _users_column_exists(conn, "password_changed_at"):
+                    set_parts.append("password_changed_at = CURRENT_TIMESTAMP")
+                cur.execute(
+                    f"""
+                    UPDATE users
+                       SET {', '.join(set_parts)}
+                     WHERE LOWER(username) = LOWER(%s)
+                     RETURNING auth_version, username;
+                    """,
+                    (username,),
+                )
+                row = cur.fetchone()
+                new_version = int(row[0] or 0) if row else 0
+                stored_username = str(row[1] or username) if row else username
+            else:
+                new_version = 0
+                stored_username = canonical_username(conn, username) or username
+
+            if revoke_all or not keep_current_sid:
+                cur.execute(
+                    """
+                    UPDATE auth_sessions
+                       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+                           revoked_reason = COALESCE(revoked_reason, %s)
+                     WHERE LOWER(username) = LOWER(%s)
+                       AND revoked_at IS NULL;
+                    """,
+                    (event, stored_username),
+                )
+                revoked_sessions = cur.rowcount
+                cur.execute(
+                    """
+                    UPDATE auth_tokens
+                       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
+                     WHERE LOWER(username) = LOWER(%s)
+                       AND revoked_at IS NULL;
+                    """,
+                    (stored_username,),
+                )
+                revoked_tokens = cur.rowcount
+            else:
+                cur.execute(
+                    """
+                    UPDATE auth_sessions
+                       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
+                           revoked_reason = COALESCE(revoked_reason, %s)
+                     WHERE LOWER(username) = LOWER(%s)
+                       AND session_id <> %s
+                       AND revoked_at IS NULL;
+                    """,
+                    (event, stored_username, keep_current_sid),
+                )
+                revoked_sessions = cur.rowcount
+                cur.execute(
+                    """
+                    UPDATE auth_tokens
+                       SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
+                     WHERE LOWER(username) = LOWER(%s)
+                       AND session_id IS DISTINCT FROM %s
+                       AND revoked_at IS NULL;
+                    """,
+                    (stored_username, keep_current_sid),
+                )
+                revoked_tokens = cur.rowcount
+                if _table_column_exists(conn, "auth_sessions", "auth_version"):
+                    cur.execute(
+                        """
+                        UPDATE auth_sessions
+                           SET auth_version = %s,
+                               revoked_at = NULL,
+                               revoked_reason = NULL
+                         WHERE session_id = %s
+                           AND LOWER(username) = LOWER(%s);
+                        """,
+                        (new_version, keep_current_sid, stored_username),
+                    )
+        if commit:
+            conn.commit()
+        return {
+            "auth_version": int(new_version or 0),
+            "revoked_sessions": int(revoked_sessions or 0),
+            "revoked_tokens": int(revoked_tokens or 0),
+        }
+    except Exception:
+        if own_conn or commit:
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+        raise
 
 def revoke_auth_session(session_id: str, reason: str | None = None) -> None:
     """Revoke a session and all tokens bound to it."""
@@ -719,7 +1021,7 @@ def revoke_other_sessions_for_user(username: str, keep_session_id: str, reason: 
             UPDATE auth_sessions
                SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
                    revoked_reason = COALESCE(revoked_reason, %s)
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND session_id <> %s
                AND revoked_at IS NULL;
             """,
@@ -731,7 +1033,7 @@ def revoke_other_sessions_for_user(username: str, keep_session_id: str, reason: 
             """
             UPDATE auth_tokens
                SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND session_id IS DISTINCT FROM %s
                AND revoked_at IS NULL;
             """,
@@ -758,7 +1060,7 @@ def revoke_all_sessions_for_user(username: str, reason: str | None = "logout_all
             UPDATE auth_sessions
                SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
                    revoked_reason = COALESCE(revoked_reason, %s)
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND revoked_at IS NULL;
             """,
             (reason, username),
@@ -769,7 +1071,7 @@ def revoke_all_sessions_for_user(username: str, reason: str | None = "logout_all
             """
             UPDATE auth_tokens
                SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND revoked_at IS NULL;
             """,
             (username,),
@@ -796,7 +1098,7 @@ def revoke_all_sessions_and_tokens_for_user(username: str, reason: str | None = 
             UPDATE auth_sessions
                SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP),
                    revoked_reason = COALESCE(revoked_reason, %s)
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND revoked_at IS NULL;
             """,
             (reason, username),
@@ -807,7 +1109,7 @@ def revoke_all_sessions_and_tokens_for_user(username: str, reason: str | None = 
             """
             UPDATE auth_tokens
                SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP)
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                AND revoked_at IS NULL;
             """,
             (username,),
@@ -847,7 +1149,7 @@ def list_auth_sessions(username: str, *, include_revoked: bool = True, limit: in
             f"""
             SELECT session_id, created_at, last_seen_at, last_activity_at, revoked_at, revoked_reason, user_agent, ip_address
               FROM auth_sessions
-             WHERE username = %s
+             WHERE LOWER(username) = LOWER(%s)
                {revoked_filter}
              ORDER BY COALESCE(last_activity_at, last_seen_at, created_at) DESC
              LIMIT %s;
@@ -890,7 +1192,7 @@ def is_refresh_token_active(username: str, jti: str) -> bool:
             SELECT revoked_at, replaced_by, expires_at, session_id
               FROM auth_tokens
              WHERE jti = %s
-               AND username = %s
+               AND LOWER(username) = LOWER(%s)
                AND token_type = 'refresh';
             """,
             (jti, username),
@@ -914,7 +1216,7 @@ def is_refresh_token_active(username: str, jti: str) -> bool:
     if session_id:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT revoked_at FROM auth_sessions WHERE session_id = %s AND username = %s;",
+                "SELECT revoked_at FROM auth_sessions WHERE session_id = %s AND LOWER(username) = LOWER(%s);",
                 (session_id, username),
             )
             srow = cur.fetchone()
@@ -937,7 +1239,7 @@ def get_refresh_token_meta(username: str, jti: str):
             SELECT revoked_at, replaced_by, expires_at, last_used_at, session_id
               FROM auth_tokens
              WHERE jti = %s
-               AND username = %s
+               AND LOWER(username) = LOWER(%s)
                AND token_type = 'refresh';
             """,
             (jti, username),
@@ -973,7 +1275,7 @@ def is_refresh_token_usable(username: str, jti: str) -> bool:
         conn = get_db()
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT revoked_at FROM auth_sessions WHERE session_id = %s AND username = %s;",
+                "SELECT revoked_at FROM auth_sessions WHERE session_id = %s AND LOWER(username) = LOWER(%s);",
                 (session_id, username),
             )
             srow = cur.fetchone()
@@ -983,6 +1285,65 @@ def is_refresh_token_usable(username: str, jti: str) -> bool:
             return False
 
     return True
+
+
+
+def rotate_refresh_and_store_access_token(
+    *,
+    username: str,
+    old_jti: str,
+    new_refresh_jti: str,
+    new_refresh_expires_at: datetime | None,
+    new_access_jti: str,
+    new_access_expires_at: datetime | None,
+    session_id: str | None = None,
+    user_agent: str | None = None,
+    ip_address: str | None = None,
+) -> bool:
+    if not username or not old_jti or not new_refresh_jti or not new_access_jti:
+        return False
+    conn = get_db()
+    try:
+        with conn.cursor() as cur:
+            if session_id is None:
+                cur.execute(
+                    """
+                    SELECT session_id
+                      FROM auth_tokens
+                     WHERE jti = %s
+                       AND LOWER(username) = LOWER(%s)
+                       AND token_type = 'refresh';
+                    """,
+                    (old_jti, username),
+                )
+                row = cur.fetchone()
+                session_id = row[0] if row else None
+            cur.execute(
+                """
+                UPDATE auth_tokens
+                   SET replaced_by = %s,
+                       last_used_at = CURRENT_TIMESTAMP
+                 WHERE jti = %s
+                   AND LOWER(username) = LOWER(%s)
+                   AND token_type = 'refresh'
+                   AND revoked_at IS NULL
+                   AND replaced_by IS NULL;
+                """,
+                (new_refresh_jti, old_jti, username),
+            )
+            if int(getattr(cur, "rowcount", 0) or 0) != 1:
+                conn.rollback()
+                return False
+        store_auth_token_in_conn(conn, jti=new_refresh_jti, username=username, token_type="refresh", expires_at=new_refresh_expires_at, session_id=session_id, user_agent=user_agent, ip_address=ip_address)
+        store_auth_token_in_conn(conn, jti=new_access_jti, username=username, token_type="access", expires_at=new_access_expires_at, session_id=session_id, user_agent=user_agent, ip_address=ip_address)
+        conn.commit()
+        return True
+    except Exception:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        raise
 
 def rotate_refresh_token(
     username: str,
@@ -1011,7 +1372,7 @@ def rotate_refresh_token(
                 SELECT session_id
                   FROM auth_tokens
                  WHERE jti = %s
-                   AND username = %s
+                   AND LOWER(username) = LOWER(%s)
                    AND token_type = 'refresh';
                 """,
                 (old_jti, username),
@@ -1025,7 +1386,7 @@ def rotate_refresh_token(
                SET replaced_by = %s,
                    last_used_at = CURRENT_TIMESTAMP
              WHERE jti = %s
-               AND username = %s
+               AND LOWER(username) = LOWER(%s)
                AND token_type = 'refresh'
                AND revoked_at IS NULL
                AND replaced_by IS NULL;
@@ -1038,13 +1399,15 @@ def rotate_refresh_token(
             conn.rollback()
             return False
 
-        cur.execute(
-            """
-            INSERT INTO auth_tokens (jti, username, session_id, token_type, expires_at, user_agent, ip_address)
-            VALUES (%s, %s, %s, 'refresh', %s, %s, %s)
-            ON CONFLICT (jti) DO NOTHING;
-            """,
-            (new_jti, username, session_id, new_expires_at, user_agent, ip_address),
+        store_auth_token_in_conn(
+            conn,
+            jti=new_jti,
+            username=username,
+            token_type="refresh",
+            expires_at=new_expires_at,
+            session_id=session_id,
+            user_agent=user_agent,
+            ip_address=ip_address,
         )
     conn.commit()
     return True

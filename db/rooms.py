@@ -103,7 +103,7 @@ def get_pending_friend_requests(username: str) -> list[str]:
         _release_conn(conn, from_pool)
     return requests
 
-def load_rooms_from_json():
+def load_rooms_from_json(conn=None, *, commit: bool = True):
     """Sync *official* chat_rooms from chat_rooms.json.
 
     Behavior:
@@ -121,7 +121,7 @@ def load_rooms_from_json():
     rooms = [(name, 0, 'system', 'official') for name in room_names]
     official_names_lower = [name.lower() for name in room_names]
 
-    conn = get_db()
+    conn = conn if conn is not None else get_db()
     with conn.cursor() as cur:
         cur.executemany(
             """
@@ -142,7 +142,8 @@ def load_rooms_from_json():
             """,
             (official_names_lower,),
         )
-    conn.commit()
+    if commit:
+        conn.commit()
 
 def consume_room_invites(room_name: str, username: str) -> None:
     """Delete outstanding *notification* invites for (room_name, username).
@@ -157,7 +158,11 @@ def consume_room_invites(room_name: str, username: str) -> None:
     try:
         with conn.cursor() as cur:
             cur.execute(
-                "DELETE FROM room_invites WHERE room_name=%s AND invited_user=%s;",
+                """
+                DELETE FROM room_invites
+                 WHERE LOWER(room_name)=LOWER(%s)
+                   AND LOWER(invited_user)=LOWER(%s);
+                """,
                 (room_name, username),
             )
         conn.commit()

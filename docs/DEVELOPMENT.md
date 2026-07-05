@@ -1,6 +1,6 @@
 # Development
 
-Version: **0.11.0-beta.309**
+Version: **0.11.0-beta.317**
 
 ## Local setup
 

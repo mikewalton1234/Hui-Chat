@@ -1,6 +1,6 @@
 # Security
 
-Version: **0.11.0-beta.309**
+Version: **0.11.0-beta.317**
 
 ## Secrets handling
 
@@ -45,7 +45,7 @@ Review and harden these settings before deployment:
 
 ## Admin panel authorization and step-up checks
 
-Admin routes are guarded with live RBAC permission checks rather than stale session flags. High-risk admin writes require a recent password confirmation tied to the current auth-session ID, and password confirmation attempts are rate-limited with `rate_limit_admin_reauth` so the reauth endpoint cannot be used as an unlimited password oracle.
+Admin routes are guarded with live RBAC permission checks rather than stale session flags. High-risk admin writes require an admin password confirmation tied to the current auth-session ID. By default, one confirmation unlocks admin actions for the current login session (`admin_reauth_once_per_session=true`) so admins are not repeatedly prompted while working in the panel; set `admin_reauth_once_per_session=false` to restore a timed window controlled by `admin_fresh_auth_window_seconds`. Password confirmation attempts remain rate-limited with `rate_limit_admin_reauth` so the reauth endpoint cannot be used as an unlimited password oracle.
 
 Sensitive audit/login metadata is restricted to admins. Mutating actions use the narrowest available permission, and moderation routes refuse to target admin or privileged accounts unless the actor also has `admin:basic`. Role assignment also refuses to downgrade/change privileged target accounts without `admin:basic`, deleting custom roles that contain privileged permissions requires `admin:basic`, and Test Lab execution is admin plus recent-reauth gated because it can run mutating checks. Compatibility admin-route aliases must reuse the source endpoint methods and fail closed to POST-only rather than accidentally introducing GET access to mutating handlers.
 

@@ -1,41 +1,44 @@
-# Echo-Chat systemd unit (Gunicorn production runner)
+# Echo-Chat systemd unit (direct Gunicorn single instance)
+#
+# Preferred path:
+#   python main.py --write-deployment-kit
+#
+# This direct-Gunicorn template is for advanced operators. The safer beginner
+# path is echochat.service, which launches through main.py --production.
 #
 # Install:
 #   sudo cp deploy/systemd/echochat-gunicorn.service /etc/systemd/system/echochat-gunicorn.service
 #   sudo mkdir -p /etc/echochat
 #   sudo cp deploy/systemd/echochat.env.example /etc/echochat/echochat.env
-#   sudo chmod 600 /etc/echochat/echochat.env
+#   sudo chown root:echochat /etc/echochat/echochat.env
+#   sudo chmod 640 /etc/echochat/echochat.env
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now echochat-gunicorn
 #
 # Notes:
-# - Adjust WorkingDirectory and ExecStart paths to your install.
-# - Requires Redis if you run more than 1 worker (Socket.IO message queue).
+# - Adjust WorkingDirectory, python/gunicorn paths, and config path to your install.
+# - Keep Gunicorn at one worker; use echochat@.service for multiple one-worker instances with Redis Socket.IO queue.
 
 [Unit]
-Description=Chat server powered by Echo-Chat (Gunicorn + Eventlet)
+Description=Chat server powered by Echo-Chat (Gunicorn single instance)
 After=network-online.target redis.service
 Wants=network-online.target redis.service
 
 [Service]
 Type=simple
-
-# ---- Adjust these paths ----
 WorkingDirectory=/opt/echochat/Echo-Chat-main
-ExecStart=/opt/echochat/.venv/bin/gunicorn -c /opt/echochat/Echo-Chat-main/gunicorn_conf.py wsgi:app
-
-# Load env vars / secrets
 EnvironmentFile=/etc/echochat/echochat.env
-
 Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/opt/echochat/Echo-Chat-main/.venv/bin/python tools/config_doctor.py --config /opt/echochat/Echo-Chat-main/server_config.json
+ExecStartPre=/opt/echochat/Echo-Chat-main/.venv/bin/python main.py --config /opt/echochat/Echo-Chat-main/server_config.json --redis-socketio-check
+ExecStart=/usr/bin/env ECHOCHAT_CONFIG=/opt/echochat/Echo-Chat-main/server_config.json ECHOCHAT_WORKERS=1 /opt/echochat/Echo-Chat-main/.venv/bin/gunicorn -c /opt/echochat/Echo-Chat-main/gunicorn_conf.py wsgi:app
 Restart=on-failure
-RestartSec=2
-TimeoutStopSec=20
+RestartSec=3
+TimeoutStopSec=25
 
 User=echochat
 Group=echochat
 
-# Hardening (moderate; safe defaults)
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -45,6 +48,10 @@ RestrictSUIDSGID=true
 LockPersonality=true
 
 ReadWritePaths=/opt/echochat/Echo-Chat-main/logs
+ReadWritePaths=/opt/echochat/Echo-Chat-main/uploads
+ReadWritePaths=/opt/echochat/Echo-Chat-main/private_uploads
+ReadWritePaths=/opt/echochat/Echo-Chat-main/instance
+ReadWritePaths=/opt/echochat/Echo-Chat-main/static/uploads
 ReadWritePaths=/opt/echochat/Echo-Chat-main/server_config.json
 
 [Install]

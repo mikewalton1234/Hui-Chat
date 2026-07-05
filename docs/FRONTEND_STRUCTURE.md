@@ -1,6 +1,6 @@
 # Frontend Structure
 
-Version: **0.11.0-beta.309**
+Version: **0.11.0-beta.386**
 
 ## Source of truth
 
@@ -40,3 +40,8 @@ For frontend changes:
 2. edit that file
 3. update or add targeted tests against the active file
 4. run the JavaScript syntax checks against the split runtime files
+
+
+## UI12 release-gate note
+
+Admin Test Lab Browser release gate summary recomputation is covered by `tools/ui12_final_frontend_release_doctor.py`.

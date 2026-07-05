@@ -1,6 +1,6 @@
 # Deployment
 
-Version: **0.11.0-beta.309**
+Version: **0.11.0-beta.317**
 
 
 ## Naming and branding in deployments
@@ -118,13 +118,15 @@ Use a nested output folder such as `deploy/generated-deployment`. The generator 
 
 The generated `echochat.env.example` includes placeholders for production-only secrets, including database/JWT secrets, SMTP, Twilio/SMS 2FA, Dynamic DNS, and WebRTC TURN credentials. Replace every `CHANGE_ME` value before installing it as the systemd EnvironmentFile.
 
-The generated systemd unit deliberately uses the beginner-safe production path: one Gunicorn process, `gthread`, Flask-SocketIO `threading`, and Redis-backed rate limits for public beta. Scale later by adding multiple one-worker instances behind sticky routing rather than starting with unsafe Gunicorn multi-worker Socket.IO.
+The generated systemd unit deliberately uses the beginner-safe production path: one Gunicorn process, `gthread`, Flask-SocketIO `threading`, and Redis-backed rate limits for public beta. Scale later by adding multiple one-worker instances behind sticky routing rather than starting with unsafe multi-worker Gunicorn for Socket.IO.
+
+Generated systemd services also run lightweight startup gates before the server process starts: `tools/config_doctor.py` checks config shape without needing PostgreSQL, and `main.py --redis-socketio-check` blocks unsafe Socket.IO worker/instance topology. The generated install commands create and chown runtime-writable folders such as `logs/`, `uploads/`, `private_uploads/`, `instance/`, and configured private upload roots. Keep only one `echochat-janitor.service` running, even when multiple `echochat@PORT` web instances are enabled.
 
 ## Socket.IO topology
 
 Single-process development and the built-in one-worker production runner can run without a Socket.IO Redis queue. Echo-Chat will not attach the Socket.IO server to a configured Redis queue in a one-worker runtime unless you explicitly set `ECHOCHAT_FORCE_SOCKETIO_REDIS_QUEUE=1`. This avoids noisy Redis pub/sub reconnect loops on local test servers.
 
-For multi-worker or multi-process deployment, use a shared Socket.IO message queue such as Redis. Without it, cross-worker emits for rooms, invites, DMs, and presence can fail or appear inconsistent.
+For multiple one-worker instances, use a shared Socket.IO message queue such as Redis. Without it, cross-process emits for rooms, invites, DMs, and presence can fail or appear inconsistent.
 
 For the default Gunicorn `gthread` runner, Echo-Chat now advertises `polling` as the browser transport by default. This is intentionally conservative and prevents the client from repeatedly trying a WebSocket-first connection on deployments that are not WebSocket-ready. Advanced deployments can opt into WebSocket transport with `socketio_transports` or `ECHOCHAT_SOCKETIO_TRANSPORTS`.
 
@@ -141,7 +143,7 @@ Relevant settings:
 The repository includes `gunicorn_conf.py`. For serious deployment, verify that:
 
 - the selected async model matches the Flask-SocketIO runtime mode
-- Redis is configured when using multiple workers
+- Redis is configured when using multiple one-worker instances
 - the janitor is not duplicated across every worker process
 
 ## SMTP deployment
@@ -232,6 +234,7 @@ Before public beta, run the Redis/Socket.IO checker:
 ```bash
 python main.py --redis-socketio-check
 python main.py --redis-socketio-check --redis-live-check  # optional live Redis ping
+python tools/deployment_ops_doctor.py
 ```
 
 Beginner-safe rule: keep the built-in Gunicorn runner at one worker. Do not set `ECHOCHAT_WORKERS=2` in the same Gunicorn process for Socket.IO chat. When you are ready to scale, run multiple one-worker Echo-Chat instances behind sticky routing and configure Redis:
@@ -352,3 +355,19 @@ All-room E2EE strict mode is intentionally fenced with an acknowledgement becaus
 5. Run **Create security backup**.
 6. Run **Encrypt old emails**.
 7. Confirm plaintext email count is zero or expected.
+
+
+## Socket.IO worker rule
+
+For Echo-Chat's built-in Gunicorn runner, use `production_workers=1`. Flask-SocketIO's Gunicorn deployment path is one worker per process because Gunicorn's worker balancer is not sticky for Socket.IO clients. To scale later, run multiple one-worker Echo-Chat instances behind sticky reverse-proxy routing and configure a Redis Socket.IO message queue.
+
+
+## Production instances vs workers
+
+For Socket.IO, do not use ten Gunicorn workers inside one process. Use `production_workers=1` and, when you are ready to scale, set `production_instance_count` up to `10`. That means multiple separate Echo-Chat services on separate backend ports, usually `5000-5009`, behind sticky reverse-proxy routing and a Redis Socket.IO message queue.
+
+The setup wizard records this as a deployment plan. A direct `python main.py --production` start launches one instance; the generated deployment kit includes `echochat@.service` for starting every planned instance.
+
+### S19 deep deployment recheck notes
+
+The checked-in static systemd templates now match the generated kit safety model: they run config and Redis/Socket.IO topology gates before startup, pass an explicit `ECHOCHAT_CONFIG`, keep one worker per process, include runtime `ReadWritePaths` for uploads/private uploads/instance/static uploads, and keep the janitor as one separate service. The static env-file instructions use `root:echochat` plus `0640` so the service user can read secrets without making them world-readable. For production, the generated deployment kit remains preferred because it fills in your exact folders and config path.

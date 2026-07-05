@@ -1,7 +1,10 @@
 # Echo-Chat janitor service
 #
-# Run cleanup as a single instance when the chat server is served by Gunicorn with
-# multiple workers.
+# Run exactly one cleanup process when the chat server is served by Gunicorn or
+# multiple one-worker instances. Do not start one janitor per web instance.
+#
+# Preferred path:
+#   python main.py --write-deployment-kit
 #
 # Install:
 #   sudo cp deploy/systemd/echochat-janitor.service /etc/systemd/system/echochat-janitor.service
@@ -10,17 +13,19 @@
 
 [Unit]
 Description=Chat server janitor for Echo-Chat deployments
-After=network-online.target
-Wants=network-online.target
+After=network-online.target redis.service
+Wants=network-online.target redis.service
 
 [Service]
 Type=simple
 WorkingDirectory=/opt/echochat/Echo-Chat-main
-ExecStart=/opt/echochat/.venv/bin/python janitor_runner.py
 EnvironmentFile=/etc/echochat/echochat.env
 Environment=PYTHONUNBUFFERED=1
+ExecStartPre=/opt/echochat/Echo-Chat-main/.venv/bin/python tools/config_doctor.py --config /opt/echochat/Echo-Chat-main/server_config.json
+ExecStart=/opt/echochat/Echo-Chat-main/.venv/bin/python janitor_runner.py --config /opt/echochat/Echo-Chat-main/server_config.json
 Restart=on-failure
-RestartSec=2
+RestartSec=3
+TimeoutStopSec=25
 
 User=echochat
 Group=echochat
@@ -34,6 +39,10 @@ RestrictSUIDSGID=true
 LockPersonality=true
 
 ReadWritePaths=/opt/echochat/Echo-Chat-main/logs
+ReadWritePaths=/opt/echochat/Echo-Chat-main/uploads
+ReadWritePaths=/opt/echochat/Echo-Chat-main/private_uploads
+ReadWritePaths=/opt/echochat/Echo-Chat-main/instance
+ReadWritePaths=/opt/echochat/Echo-Chat-main/static/uploads
 
 [Install]
 WantedBy=multi-user.target

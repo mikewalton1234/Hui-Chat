@@ -1,6 +1,6 @@
 # Architecture
 
-Version: **0.11.0-beta.309**
+Version: **0.11.0-beta.317**
 
 ## High-level stack
 
@@ -56,7 +56,7 @@ Important files:
 
 - PostgreSQL is the durable system of record
 - some realtime/session structures are process-local unless Redis-backed shared topology is enabled
-- multi-worker correctness for cross-worker realtime delivery depends on a Socket.IO message queue such as Redis
+- multiple-instance correctness for cross-process realtime delivery depends on a Socket.IO message queue such as Redis
 
 ## Current architectural constraints
 

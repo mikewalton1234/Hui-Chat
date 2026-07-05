@@ -43,11 +43,13 @@ ECHOCHAT_MARKER_TABLES = (
     "user_roles",
     "role_permissions",
     "echochat_schema_meta",
-    "friendships",
+    "friends",
+    "friend_requests",
+    "blocked_users",
+    "blocks",
     "private_messages",
-    "group_messages",
     "audit_log",
-    "login_events",
+    "auth_sessions",
 )
 
 ECHOCHAT_REQUIRED_USER_COLUMNS = (

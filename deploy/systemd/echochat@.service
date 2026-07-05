@@ -1,27 +1,19 @@
-# Echo-Chat systemd unit (single instance)
+# Echo-Chat systemd template for multiple one-worker instances
 #
 # Preferred path:
 #   python main.py --write-deployment-kit
 #
-# This static template is safe for a default /opt install, but the generated
-# deployment kit is better because it fills in your exact paths/settings.
-#
-# Install:
-#   sudo cp deploy/systemd/echochat.service /etc/systemd/system/echochat.service
-#   sudo mkdir -p /etc/echochat
-#   sudo cp deploy/systemd/echochat.env.example /etc/echochat/echochat.env
-#   sudo chown root:echochat /etc/echochat/echochat.env
-#   sudo chmod 640 /etc/echochat/echochat.env
+# Install example:
+#   sudo cp deploy/systemd/echochat@.service /etc/systemd/system/echochat@.service
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now echochat
+#   sudo systemctl enable --now echochat@5000 echochat@5001
 #
-# Notes:
-# - Adjust WorkingDirectory, python path, and config path to your install.
-# - Keep one Gunicorn worker per Echo-Chat process. Scale with echochat@.service.
-# - Keep the Redis Socket.IO gate; it blocks unsafe multi-instance topology.
+# The instance name is the backend port. Keep every process at one Gunicorn
+# worker. For 10 instances use ports such as 5000-5009 behind sticky reverse-
+# proxy routing and configure ECHOCHAT_SOCKETIO_MESSAGE_QUEUE=redis://127.0.0.1:6379/1.
 
 [Unit]
-Description=Chat server powered by Echo-Chat
+Description=Echo-Chat one-worker instance on port %i
 After=network-online.target redis.service
 Wants=network-online.target redis.service
 
@@ -32,7 +24,8 @@ EnvironmentFile=/etc/echochat/echochat.env
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/opt/echochat/Echo-Chat-main/.venv/bin/python tools/config_doctor.py --config /opt/echochat/Echo-Chat-main/server_config.json
 ExecStartPre=/opt/echochat/Echo-Chat-main/.venv/bin/python main.py --config /opt/echochat/Echo-Chat-main/server_config.json --redis-socketio-check
-ExecStart=/usr/bin/env ECHOCHAT_CONFIG=/opt/echochat/Echo-Chat-main/server_config.json ECHOCHAT_PRODUCTION_WORKERS=1 ECHOCHAT_WORKERS=1 /opt/echochat/Echo-Chat-main/.venv/bin/python main.py --production
+# Bind overrides live in ExecStart so EnvironmentFile cannot force every instance back to port 5000.
+ExecStart=/usr/bin/env ECHOCHAT_CONFIG=/opt/echochat/Echo-Chat-main/server_config.json ECHOCHAT_BIND=127.0.0.1:%i ECHOCHAT_PRODUCTION_BIND=127.0.0.1:%i ECHOCHAT_PRODUCTION_WORKERS=1 ECHOCHAT_WORKERS=1 /opt/echochat/Echo-Chat-main/.venv/bin/python main.py --production
 Restart=on-failure
 RestartSec=3
 TimeoutStopSec=25

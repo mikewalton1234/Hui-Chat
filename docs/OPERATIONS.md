@@ -1,6 +1,6 @@
 # Operations
 
-Version: **0.11.0-beta.309**
+Version: **0.11.0-beta.346**
 
 ## Setup and boot
 
@@ -49,6 +49,20 @@ The repo includes janitor settings and a `janitor_runner.py` helper. Cleanup tim
 - `custom_room_idle_minutes`
 - `custom_private_room_idle_minutes`
 - `janitor_debug_custom_rooms`
+- `cleanup_expired_auth_enabled`
+- `cleanup_orphan_auth_enabled`
+- `auth_token_retention_days`
+- `revoked_session_retention_days`
+- `password_reset_token_retention_days`
+- `orphan_auth_retention_days`
+- `auth_cleanup_batch_limit`
+- `privacy_retention_batch_limit`
+
+Run one cleanup pass for deployment smoke testing:
+
+```bash
+python janitor_runner.py --config server_config.json --once --json
+```
 
 ## Reset and repair helpers
 

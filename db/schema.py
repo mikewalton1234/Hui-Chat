@@ -70,17 +70,29 @@ def _log_table_owner_mismatch(conn, table_name: str) -> None:
 # ----------------------------------------------------------------------
 
 
-def ensure_online_column():
+def _schema_conn(existing=None):
+    """Return an existing migration/setup connection or the request DB connection."""
+    return existing if existing is not None else get_db()
+
+
+def _commit_schema_conn(conn, commit: bool) -> None:
+    """Commit only when the caller did not pass a migration-managed connection."""
+    if commit:
+        conn.commit()
+
+
+def ensure_online_column(conn=None, *, commit: bool = True):
     """
     Add an 'online BOOLEAN DEFAULT FALSE' column to users if it does not exist.
     """
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'users'
+             WHERE table_schema = 'public'
+               AND table_name = 'users'
                AND column_name = 'online';
             """
         )
@@ -89,10 +101,10 @@ def ensure_online_column():
             cur.execute(
                 "ALTER TABLE users ADD COLUMN online BOOLEAN DEFAULT FALSE;"
             )
-            conn.commit()
+            _commit_schema_conn(conn, commit)
 
 
-def ensure_presence_columns():
+def ensure_presence_columns(conn=None, *, commit: bool = True):
     """Ensure presence-related columns exist on users.
 
     - presence_status: user's chosen availability state (online/away/busy/invisible)
@@ -101,7 +113,7 @@ def ensure_presence_columns():
     These are separate from users.online (transport-level connectedness) and users.status
     (account/admin state).
     """
-    conn = get_db()
+    conn = _schema_conn(conn)
     try:
         with conn.cursor() as cur:
             # presence_status
@@ -109,7 +121,8 @@ def ensure_presence_columns():
                 """
                 SELECT column_name
                   FROM information_schema.columns
-                 WHERE table_name = 'users'
+                 WHERE table_schema = 'public'
+                   AND table_name = 'users'
                    AND column_name = 'presence_status';
                 """
             )
@@ -124,7 +137,8 @@ def ensure_presence_columns():
                 """
                 SELECT column_name
                   FROM information_schema.columns
-                 WHERE table_name = 'users'
+                 WHERE table_schema = 'public'
+                   AND table_name = 'users'
                    AND column_name = 'custom_status';
                 """
             )
@@ -134,14 +148,14 @@ def ensure_presence_columns():
                     "ALTER TABLE users ADD COLUMN custom_status TEXT;"
                 )
 
-        conn.commit()
+        _commit_schema_conn(conn, commit)
     except psycopg2.errors.InsufficientPrivilege:
         conn.rollback()
         _log_table_owner_mismatch(conn, "users")
         raise
 
 
-def ensure_users_profile_columns() -> None:
+def ensure_users_profile_columns(conn=None, *, commit: bool = True) -> None:
     """Ensure newer profile/presence-history columns exist on users.
 
     These columns were added after some setup/bootstrap paths already existed,
@@ -149,7 +163,7 @@ def ensure_users_profile_columns() -> None:
     runtime queries expect them. Keep this idempotent.
     """
 
-    conn = get_db()
+    conn = _schema_conn(conn)
     try:
         with conn.cursor() as cur:
             def _ensure_user_col(col: str, ddl: str) -> None:
@@ -157,7 +171,8 @@ def ensure_users_profile_columns() -> None:
                     """
                     SELECT column_name
                       FROM information_schema.columns
-                     WHERE table_name = 'users'
+                     WHERE table_schema = 'public'
+                       AND table_name = 'users'
                        AND column_name = %s;
                     """,
                     (col,),
@@ -234,7 +249,7 @@ def ensure_users_profile_columns() -> None:
             cur.execute("UPDATE users SET profile_post_default_visibility = 'friends' WHERE profile_post_default_visibility IS NULL OR BTRIM(profile_post_default_visibility) = '';")
             cur.execute("UPDATE users SET share_recent_rooms = FALSE WHERE share_recent_rooms IS NULL;")
 
-        conn.commit()
+        _commit_schema_conn(conn, commit)
     except psycopg2.errors.InsufficientPrivilege:
         conn.rollback()
         _log_table_owner_mismatch(conn, "users")
@@ -258,7 +273,8 @@ def _ensure_profile_post_engagement_tables(cur) -> None:
         """
         SELECT column_name
           FROM information_schema.columns
-         WHERE table_name = 'profile_posts';
+         WHERE table_schema = 'public'
+           AND table_name = 'profile_posts';
         """
     )
     existing_profile_post_columns = {str(row[0]) for row in (cur.fetchall() or [])}
@@ -298,7 +314,8 @@ def _ensure_profile_post_engagement_tables(cur) -> None:
         """
         SELECT column_name
           FROM information_schema.columns
-         WHERE table_name = 'profile_post_comments';
+         WHERE table_schema = 'public'
+           AND table_name = 'profile_post_comments';
         """
     )
     existing_comment_columns = {str(row[0]) for row in (cur.fetchall() or [])}
@@ -366,7 +383,8 @@ def _ensure_profile_post_engagement_tables(cur) -> None:
         """
         SELECT column_name
           FROM information_schema.columns
-         WHERE table_name = 'user_profile_notification_settings';
+         WHERE table_schema = 'public'
+           AND table_name = 'user_profile_notification_settings';
         """
     )
     existing_notification_setting_columns = {str(row[0]) for row in (cur.fetchall() or [])}
@@ -399,7 +417,8 @@ def _ensure_profile_post_engagement_tables(cur) -> None:
         """
         SELECT column_name
           FROM information_schema.columns
-         WHERE table_name = 'notifications';
+         WHERE table_schema = 'public'
+           AND table_name = 'notifications';
         """
     )
     existing_notification_columns = {str(row[0]) for row in (cur.fetchall() or [])}
@@ -414,9 +433,9 @@ def _ensure_profile_post_engagement_tables(cur) -> None:
     cur.execute("CREATE INDEX IF NOT EXISTS idx_profile_notifications_user_unread ON notifications(user_id, is_read, timestamp DESC) WHERE type LIKE 'profile_post_%';")
 
 
-def ensure_profile_post_engagement_schema() -> None:
+def ensure_profile_post_engagement_schema(conn=None, *, commit: bool = True) -> None:
     """Ensure profile post likes/reactions and comments exist."""
-    conn = get_db()
+    conn = _schema_conn(conn)
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -446,18 +465,18 @@ def ensure_profile_post_engagement_schema() -> None:
             cur.execute("CREATE INDEX IF NOT EXISTS idx_profile_posts_author_featured ON profile_posts(author_username, is_featured, created_at DESC);")
             cur.execute("CREATE INDEX IF NOT EXISTS idx_profile_posts_author_pinned ON profile_posts(author_username, is_pinned, created_at DESC);")
             _ensure_profile_post_engagement_tables(cur)
-        conn.commit()
+        _commit_schema_conn(conn, commit)
     except psycopg2.errors.InsufficientPrivilege:
         conn.rollback()
         _log_table_owner_mismatch(conn, "profile_posts")
         raise
 
 
-def ensure_chat_rooms_table():
+def ensure_chat_rooms_table(conn=None, *, commit: bool = True):
     """
     Create chat_rooms table and ensure the metadata columns we rely on exist.
     """
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -476,7 +495,8 @@ def ensure_chat_rooms_table():
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'chat_rooms'
+             WHERE table_schema = 'public'
+               AND table_name = 'chat_rooms'
                AND column_name = 'member_count';
             """
         )
@@ -488,7 +508,8 @@ def ensure_chat_rooms_table():
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'chat_rooms'
+             WHERE table_schema = 'public'
+               AND table_name = 'chat_rooms'
                AND column_name = 'room_kind';
             """
         )
@@ -501,7 +522,8 @@ def ensure_chat_rooms_table():
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'chat_rooms'
+             WHERE table_schema = 'public'
+               AND table_name = 'chat_rooms'
                AND column_name = 'last_active_at';
             """
         )
@@ -514,14 +536,14 @@ def ensure_chat_rooms_table():
                 cur.execute("UPDATE chat_rooms SET last_active_at = created_at WHERE last_active_at IS NULL;")
             except Exception:
                 pass
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def sync_chat_room_kinds():
+def sync_chat_room_kinds(conn=None, *, commit: bool = True):
     """Backfill room_kind so official/custom/manual rooms can be managed safely."""
     official_names_lower = [name.lower() for name in _official_room_names_from_json()]
 
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         cur.execute("UPDATE chat_rooms SET room_kind='manual' WHERE room_kind IS NULL OR BTRIM(room_kind)='';")
         cur.execute("UPDATE chat_rooms SET room_kind='autoscaler' WHERE created_by='autoscaler';")
@@ -544,23 +566,24 @@ def sync_chat_room_kinds():
                 """,
                 (official_names_lower,),
             )
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_users_key_columns():
+def ensure_users_key_columns(conn=None, *, commit: bool = True):
     """
     If the 'users' table already exists but lacks:
       • a column 'password' (only 'password_hash' exists), rename password_hash → password,
       • columns 'public_key' and 'encrypted_private_key', add them now.
     """
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         # 1) Rename password_hash → password if needed
         cur.execute(
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'users'
+             WHERE table_schema = 'public'
+               AND table_name = 'users'
                AND column_name = 'password_hash';
             """
         )
@@ -569,7 +592,8 @@ def ensure_users_key_columns():
                 """
                 SELECT column_name
                   FROM information_schema.columns
-                 WHERE table_name = 'users'
+                 WHERE table_schema = 'public'
+                   AND table_name = 'users'
                    AND column_name = 'password';
                 """
             )
@@ -581,7 +605,8 @@ def ensure_users_key_columns():
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'users'
+             WHERE table_schema = 'public'
+               AND table_name = 'users'
                AND column_name = 'public_key';
             """
         )
@@ -593,17 +618,18 @@ def ensure_users_key_columns():
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'users'
+             WHERE table_schema = 'public'
+               AND table_name = 'users'
                AND column_name = 'encrypted_private_key';
             """
         )
         if cur.fetchone() is None:
             cur.execute("ALTER TABLE users ADD COLUMN encrypted_private_key TEXT;")
 
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_users_security_columns() -> None:
+def ensure_users_security_columns(conn=None, *, commit: bool = True) -> None:
     """Ensure users security/profile columns needed by auth flows exist.
 
     Older EchoChat databases can predate SMS 2FA and some profile fields. Keep
@@ -611,14 +637,15 @@ def ensure_users_security_columns() -> None:
     converge before login/account-security queries run.
     """
 
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         def _ensure_user_col(col: str, ddl: str) -> None:
             cur.execute(
                 """
                 SELECT column_name
                   FROM information_schema.columns
-                 WHERE table_name = 'users'
+                 WHERE table_schema = 'public'
+                   AND table_name = 'users'
                    AND column_name = %s;
                 """,
                 (col,),
@@ -645,10 +672,10 @@ def ensure_users_security_columns() -> None:
             "ALTER TABLE users ADD COLUMN created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP;",
         )
 
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_account_recovery_schema() -> None:
+def ensure_account_recovery_schema(conn=None, *, commit: bool = True) -> None:
     """Ensure account recovery fields and tables exist.
 
     This adds low-entropy recovery support (4-digit PIN) in a *safe* way:
@@ -661,7 +688,7 @@ def ensure_account_recovery_schema() -> None:
     Safe to call repeatedly.
     """
 
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         # ── users recovery columns ───────────────────────────────────────
         def _ensure_user_col(col: str, ddl: str) -> None:
@@ -669,7 +696,8 @@ def ensure_account_recovery_schema() -> None:
                 """
                 SELECT column_name
                   FROM information_schema.columns
-                 WHERE table_name = 'users'
+                 WHERE table_schema = 'public'
+                   AND table_name = 'users'
                    AND column_name = %s;
                 """,
                 (col,),
@@ -776,17 +804,17 @@ def ensure_account_recovery_schema() -> None:
             """
         )
 
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_auth_session_schema() -> None:
+def ensure_auth_session_schema(conn=None, *, commit: bool = True) -> None:
     """Ensure auth session tracking schema exists.
 
     - Adds auth_sessions table (one row per device/session)
     - Adds auth_tokens.session_id column (ties tokens to a session)
     Safe to call repeatedly.
     """
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         # auth_sessions table
         cur.execute(
@@ -800,7 +828,8 @@ def ensure_auth_session_schema() -> None:
                 revoked_at  TIMESTAMP WITH TIME ZONE,
                 revoked_reason TEXT,
                 user_agent  TEXT,
-                ip_address  TEXT
+                ip_address  TEXT,
+                auth_version INTEGER NOT NULL DEFAULT 0
             );
             """
         )
@@ -822,7 +851,8 @@ def ensure_auth_session_schema() -> None:
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'auth_sessions'
+             WHERE table_schema = 'public'
+               AND table_name = 'auth_sessions'
                AND column_name = 'last_activity_at';
             """
         )
@@ -838,54 +868,63 @@ def ensure_auth_session_schema() -> None:
             """
         )
 
+        cur.execute("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0;")
+        cur.execute("SELECT to_regclass('public.auth_tokens');")
+        _auth_tokens_exists = bool((cur.fetchone() or [None])[0])
+        if _auth_tokens_exists:
+            cur.execute("ALTER TABLE auth_tokens ADD COLUMN IF NOT EXISTS auth_version INTEGER NOT NULL DEFAULT 0;")
+
         # auth_tokens.session_id column
         cur.execute(
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name = 'auth_tokens'
+             WHERE table_schema = 'public'
+               AND table_name = 'auth_tokens'
                AND column_name = 'session_id';
             """
         )
-        if cur.fetchone() is None:
+        if _auth_tokens_exists and cur.fetchone() is None:
             logging.warning("Adding auth_tokens.session_id column")
             cur.execute("ALTER TABLE auth_tokens ADD COLUMN session_id TEXT;")
 
-        cur.execute(
-            """
-            CREATE INDEX IF NOT EXISTS idx_auth_tokens_session
-            ON auth_tokens(session_id);
-            """
-        )
-    conn.commit()
+        if _auth_tokens_exists:
+            cur.execute(
+                """
+                CREATE INDEX IF NOT EXISTS idx_auth_tokens_session
+                ON auth_tokens(session_id);
+                """
+            )
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_user_verified_column():
+def ensure_user_verified_column(conn=None, *, commit: bool = True):
     """Ensure users.is_verified exists.
 
     EchoChat doesn't yet have an explicit email verification workflow, but the
     room browser requires a server-side "verified" gate for creating custom rooms.
     We default existing users to TRUE for backward compatibility.
     """
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         cur.execute(
             """
             SELECT column_name
               FROM information_schema.columns
-             WHERE table_name='users'
+             WHERE table_schema = 'public'
+               AND table_name='users'
                AND column_name='is_verified';
             """
         )
         if cur.fetchone() is None:
             logging.warning("Adding users.is_verified column")
             cur.execute("ALTER TABLE users ADD COLUMN is_verified BOOLEAN NOT NULL DEFAULT TRUE;")
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_custom_rooms_schema():
+def ensure_custom_rooms_schema(conn=None, *, commit: bool = True):
     """Create/patch schema for custom rooms + private invites."""
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -1002,12 +1041,12 @@ def ensure_custom_rooms_schema():
             ON room_invites(invited_user);
             """
         )
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
-def ensure_room_message_expiry_schema() -> None:
+def ensure_room_message_expiry_schema(conn=None, *, commit: bool = True) -> None:
     """Create/patch schema for per-room message expiry + supporting indexes."""
-    conn = get_db()
+    conn = _schema_conn(conn)
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -1026,7 +1065,7 @@ def ensure_room_message_expiry_schema() -> None:
 
         # Reaction fanout aggregates should be fast.
         cur.execute("CREATE INDEX IF NOT EXISTS idx_message_reactions_message_id ON message_reactions(message_id);")
-    conn.commit()
+    _commit_schema_conn(conn, commit)
 
 
 
@@ -1038,12 +1077,15 @@ def ensure_room_message_expiry_schema() -> None:
 # ----------------------------------------------------------------------
 
 
-def _create_full_schema():
+def _create_full_schema(conn=None, *, commit: bool = True):
     """
     Create all tables from the original SQLite schema, adapted for PostgreSQL.
     Uses SERIAL for auto-increment IDs, TIMESTAMP WITH TIME ZONE for date columns, and ON CONFLICT where needed.
     """
-    conn, from_pool = _acquire_conn()
+    own_conn = conn is None
+    from_pool = False
+    if own_conn:
+        conn, from_pool = _acquire_conn()
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -1091,7 +1133,10 @@ def _create_full_schema():
                     encrypted_private_key TEXT,
                     online                BOOLEAN DEFAULT FALSE,
                     is_verified           BOOLEAN NOT NULL DEFAULT TRUE,
-                    created_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    created_at            TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    auth_version          INTEGER NOT NULL DEFAULT 0,
+                    password_changed_at   TIMESTAMP WITH TIME ZONE,
+                    auth_changed_at       TIMESTAMP WITH TIME ZONE
                 );
 
                 CREATE TABLE IF NOT EXISTS user_recent_rooms (
@@ -1437,6 +1482,11 @@ def _create_full_schema():
                     expires_at    TIMESTAMP WITH TIME ZONE
                 );
 
+                CREATE INDEX IF NOT EXISTS idx_user_sanctions_user_type_active
+                    ON user_sanctions (LOWER(username), sanction_type, expires_at, created_at DESC);
+                CREATE INDEX IF NOT EXISTS idx_user_sanctions_type_active
+                    ON user_sanctions (sanction_type, expires_at, created_at DESC);
+
                 CREATE TABLE IF NOT EXISTS audit_log (
                     id            SERIAL PRIMARY KEY,
                     actor         TEXT NOT NULL,
@@ -1526,7 +1576,8 @@ def _create_full_schema():
                     revoked_at  TIMESTAMP WITH TIME ZONE,
                     revoked_reason TEXT,
                     user_agent  TEXT,
-                    ip_address  TEXT
+                    ip_address  TEXT,
+                    auth_version INTEGER NOT NULL DEFAULT 0
                 );
 
                 CREATE INDEX IF NOT EXISTS idx_auth_sessions_username ON auth_sessions(username);
@@ -1543,7 +1594,8 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
                     replaced_by TEXT,
                     last_used_at TIMESTAMP WITH TIME ZONE,
                     user_agent  TEXT,
-                    ip_address  TEXT
+                    ip_address  TEXT,
+                    auth_version INTEGER NOT NULL DEFAULT 0
                 );
 
                 /*
@@ -1563,26 +1615,33 @@ CREATE TABLE IF NOT EXISTS auth_tokens (
                 /* chat_rooms handled in ensure_chat_rooms_table() */
                 """
             )
-        conn.commit()
+        _commit_schema_conn(conn, commit)
     finally:
-        _release_conn(conn, from_pool)
+        if own_conn:
+            _release_conn(conn, from_pool)
 
 
-def _seed_roles_permissions():
+def _seed_roles_permissions(conn=None, *, commit: bool = True):
     """
     Insert default roles and permissions, then map them.
     """
-    conn, from_pool = _acquire_conn()
+    own_conn = conn is None
+    from_pool = False
+    if own_conn:
+        conn, from_pool = _acquire_conn()
     try:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             roles = ["admin", "moderator", "viewer"]
             perms = [
-                "admin:basic", "admin:settings", "admin:assign_role", "admin:manage_roles",
+                "admin:basic", "admin:settings", "admin:audit", "admin:test_lab",
+                "admin:create_user", "admin:delete_user", "admin:set_recovery_pin",
+                "admin:set_user_status", "admin:set_user_quota", "admin:revoke_2fa",
+                "admin:broadcast", "admin:assign_role", "admin:manage_roles",
                 "admin:ban_ip", "admin:reset_password", "admin:logout_user",
                 "moderation:mute_user", "moderation:kick_user", "moderation:ban_room",
                 "moderation:suspend_user", "moderation:shadowban",
-                "room:lock", "room:readonly",
-                "room:delete",
+                "room:lock", "room:readonly", "room:clear", "room:delete",
+                "profile:moderate",
                 "user:delete_self", "user:edit_profile"
             ]
 
@@ -1618,14 +1677,16 @@ def _seed_roles_permissions():
                 map_role_perm("admin", p)
 
             for p in ("moderation:mute_user", "moderation:kick_user",
-                      "moderation:ban_room", "room:readonly"):
+                      "moderation:ban_room", "room:readonly", "room:clear",
+                      "profile:moderate"):
                 map_role_perm("moderator", p)
 
             map_role_perm("viewer", "user:edit_profile")
 
-        conn.commit()
+        _commit_schema_conn(conn, commit)
     finally:
-        _release_conn(conn, from_pool)
+        if own_conn:
+            _release_conn(conn, from_pool)
 
 
 # ----------------------------------------------------------------------
@@ -1633,33 +1694,34 @@ def _seed_roles_permissions():
 # ----------------------------------------------------------------------
 
 
-def _legacy_bootstrap_schema():
+def _legacy_bootstrap_schema(conn=None, *, commit: bool = True):
     """Create or patch the current schema using the pre-migrations bootstrap.
 
     This remains the baseline implementation for migration 0001 so existing
     databases and fresh databases can converge on a tracked schema version.
     """
+    conn = _schema_conn(conn)
     # 1) Create all tables if missing
-    _create_full_schema()
+    _create_full_schema(conn, commit=False)
 
-    # 2) Patch any missing columns/tables
-    conn = get_db()
-    ensure_online_column()
-    ensure_presence_columns()
-    ensure_users_profile_columns()
-    ensure_custom_rooms_schema()
-    ensure_chat_rooms_table()
-    ensure_users_key_columns()
-    ensure_users_security_columns()
-    ensure_user_verified_column()
-    ensure_account_recovery_schema()
-    ensure_auth_session_schema()
-    ensure_room_message_expiry_schema()
+    # 2) Patch any missing columns/tables on the same migration/setup connection
+    ensure_online_column(conn, commit=False)
+    ensure_presence_columns(conn, commit=False)
+    ensure_users_profile_columns(conn, commit=False)
+    ensure_custom_rooms_schema(conn, commit=False)
+    ensure_chat_rooms_table(conn, commit=False)
+    ensure_users_key_columns(conn, commit=False)
+    ensure_users_security_columns(conn, commit=False)
+    ensure_user_verified_column(conn, commit=False)
+    ensure_account_recovery_schema(conn, commit=False)
+    ensure_auth_session_schema(conn, commit=False)
+    ensure_room_message_expiry_schema(conn, commit=False)
 
     # 3) RBAC seeding and room preload
-    _seed_roles_permissions()
-    sync_chat_room_kinds()
-    load_rooms_from_json()
+    _seed_roles_permissions(conn, commit=False)
+    sync_chat_room_kinds(conn, commit=False)
+    load_rooms_from_json(conn, commit=False)
+    _commit_schema_conn(conn, commit)
 
 
 

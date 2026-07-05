@@ -27,3 +27,8 @@ class MigrationSpec:
 
 _POOL: ThreadedConnectionPool | None = None
 _DSN: str | None = None
+_POOL_CONFIGURED: bool = False
+_POOL_INIT_ERROR: str | None = None
+_ALLOW_DIRECT_FALLBACK: bool = False
+_DB_POOL_MAX: int | None = None
+_DB_POOL_MIN: int | None = None

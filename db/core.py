@@ -24,13 +24,19 @@ def prepare_runtime_database(settings: dict) -> dict:
         or settings.get("database_bootstrap_url")
         or ""
     )
+    if not runtime_dsn:
+        raise RuntimeError(
+            "PostgreSQL DSN is empty. Run `python main.py --setup` and choose/create a local "
+            "PostgreSQL database, or set DATABASE_URL/DB_CONNECTION_STRING. Example: "
+            "DATABASE_URL=postgresql://$USER@localhost:5432/echochat"
+        )
     settings["database_url"] = runtime_dsn
     if bootstrap_dsn:
         settings["database_bootstrap_url"] = str(bootstrap_dsn)
     ensure_database_ready(runtime_dsn, recreate=False, bootstrap_dsn=bootstrap_dsn or None)
     return {"runtime_dsn": runtime_dsn, "bootstrap_dsn": bootstrap_dsn or None}
 
-def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None) -> None:
+def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None, *, allow_direct_fallback: bool | None = None) -> None:
     """Initialise a global ThreadedConnectionPool.
 
     Safe to call multiple times (no-op after first init).
@@ -39,6 +45,13 @@ def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None) ->
         return
 
     shared._DSN = str(sanitize_postgres_dsn(dsn or get_db_connection_string()))
+    shared._POOL_CONFIGURED = True
+    shared._DB_POOL_MIN = int(minconn)
+    shared._DB_POOL_MAX = int(maxconn)
+    if allow_direct_fallback is None:
+        raw = os.getenv("ECHOCHAT_DB_POOL_DIRECT_FALLBACK", "").strip().lower()
+        allow_direct_fallback = raw in {"1", "true", "yes", "on"}
+    shared._ALLOW_DIRECT_FALLBACK = bool(allow_direct_fallback)
 
     try:
         shared._POOL = shared.ThreadedConnectionPool(
@@ -46,29 +59,45 @@ def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None) ->
             maxconn=int(maxconn),
             dsn=shared._DSN,
         )
+        shared._POOL_INIT_ERROR = None
         logging.info("✅  Postgres connection pool ready (min=%s max=%s)", minconn, maxconn)
     except Exception as e:
         shared._POOL = None
-        logging.warning("⚠️  Could not initialise Postgres pool; falling back to direct connects: %s", e)
+        shared._POOL_INIT_ERROR = str(e)
+        if shared._ALLOW_DIRECT_FALLBACK:
+            logging.warning("⚠️  Could not initialise Postgres pool; direct DB fallback is explicitly enabled: %s", e)
+        else:
+            logging.error("❌ Could not initialise Postgres pool and direct fallback is disabled: %s", e)
 
 
 def _acquire_conn():
-    """Acquire a connection either from the pool or by direct connect.
+    """Acquire a connection either from the configured pool or a direct connection.
 
-    Returns (conn, from_pool: bool)
-
-    If the pool is temporarily exhausted or cannot hand out a connection,
-    open a short-lived direct connection instead of failing the request. This
-    keeps bursty UI traffic (admin polling, reconnects, multiple tabs) from
-    turning one saturated pool into user-visible room/PM failures.
+    Once ``init_db_pool()`` has configured a bounded pool, that bound is treated
+    as real capacity.  Echo-Chat used to open unbounded temporary direct
+    connections when the pool was exhausted; that defeated db_pool_max and could
+    overload PostgreSQL in scaled deployments.  Direct fallback now requires the
+    explicit ECHOCHAT_DB_POOL_DIRECT_FALLBACK=1 escape hatch.
     """
     if shared._POOL is not None:
         try:
             return shared._POOL.getconn(), True
         except PoolError as e:
-            logging.warning("Postgres pool exhausted; opening temporary direct connection: %s", e)
+            if not shared._ALLOW_DIRECT_FALLBACK:
+                raise RuntimeError(
+                    "PostgreSQL connection pool is exhausted. Increase db_pool_max, reduce planned instances, "
+                    "or add PgBouncer; Echo-Chat will not open unbounded direct DB connections."
+                ) from e
+            logging.warning("Postgres pool exhausted; direct DB fallback is explicitly enabled: %s", e)
         except Exception as e:
-            logging.warning("Postgres pool getconn failed; opening temporary direct connection: %s", e)
+            if not shared._ALLOW_DIRECT_FALLBACK:
+                raise RuntimeError("PostgreSQL pool getconn failed and direct DB fallback is disabled") from e
+            logging.warning("Postgres pool getconn failed; direct DB fallback is explicitly enabled: %s", e)
+    elif shared._POOL_CONFIGURED and not shared._ALLOW_DIRECT_FALLBACK:
+        raise RuntimeError(
+            "PostgreSQL connection pool was configured but failed to initialize; "
+            f"direct DB fallback is disabled. Last pool error: {shared._POOL_INIT_ERROR or 'unknown'}"
+        )
     return psycopg2.connect(shared._DSN or get_db_connection_string()), False
 
 
