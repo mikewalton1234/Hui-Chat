@@ -4,7 +4,7 @@
 
 It includes chat rooms, private messages, group chats, friends, profiles, radio listening, file sharing, torrent/magnet tools, voice chat, webcam sharing, mobile support, and a full admin control panel.
 
-Current build: **0.11.0-beta.309**
+Current build: **0.11.0-beta.429**
 
 ## What Makes Echo-Chat Special
 
