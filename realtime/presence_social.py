@@ -291,17 +291,13 @@ def register(socketio, settings, ctx):
         try:
             _cleanup_voice_dm_sessions()
             notify = []
-            with VOICE_DM_SESSIONS_LOCK:
-                for cid, s in list(VOICE_DM_SESSIONS.items()):
-                    if s.get("caller") == user or s.get("callee") == user:
-                        other = s.get("callee") if s.get("caller") == user else s.get("caller")
-                        state = str(s.get("state") or "")
-                        if state in {"active", "invited"}:
-                            notify.append((cid, other))
-                        try:
-                            del VOICE_DM_SESSIONS[cid]
-                        except Exception:
-                            pass
+            for cid, s in list(voice_dm_session_items()):
+                if s.get("caller") == user or s.get("callee") == user:
+                    other = s.get("callee") if s.get("caller") == user else s.get("caller")
+                    state = str(s.get("state") or "")
+                    if state in {"active", "invited"}:
+                        notify.append((cid, other))
+                    voice_dm_session_delete(cid)
 
             for cid, other in notify:
                 _emit_to_user(other, "voice_dm_end", {"sender": user, "call_id": cid, "reason": "peer_disconnected"})
@@ -493,20 +489,19 @@ def register(socketio, settings, ctx):
             pass
 
         try:
-            with VOICE_DM_SESSIONS_LOCK:
-                for call_id, sess in list(VOICE_DM_SESSIONS.items()):
-                    sess_pair = {str(sess.get("caller") or "").strip().lower(), str(sess.get("callee") or "").strip().lower()}
-                    if sess_pair == pair:
-                        try:
-                            del VOICE_DM_SESSIONS[call_id]
-                            dropped_voice += 1
-                        except Exception:
-                            pass
-                        try:
-                            _emit_to_user(a, "voice_dm_end", {"sender": b, "call_id": call_id, "reason": "blocked"})
-                            _emit_to_user(b, "voice_dm_end", {"sender": a, "call_id": call_id, "reason": "blocked"})
-                        except Exception:
-                            pass
+            for call_id, sess in list(voice_dm_session_items()):
+                sess_pair = {str(sess.get("caller") or "").strip().lower(), str(sess.get("callee") or "").strip().lower()}
+                if sess_pair == pair:
+                    try:
+                        voice_dm_session_delete(call_id)
+                        dropped_voice += 1
+                    except Exception:
+                        pass
+                    try:
+                        _emit_to_user(a, "voice_dm_end", {"sender": b, "call_id": call_id, "reason": "blocked"})
+                        _emit_to_user(b, "voice_dm_end", {"sender": a, "call_id": call_id, "reason": "blocked"})
+                    except Exception:
+                        pass
         except Exception:
             pass
 

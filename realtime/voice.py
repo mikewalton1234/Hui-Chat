@@ -10,7 +10,7 @@ import uuid
 import threading
 from collections import deque
 
-from flask import request
+from flask import request, current_app
 from socket_auth import jwt_required, get_jwt_identity
 from flask_socketio import join_room, leave_room, emit, disconnect
 
@@ -50,6 +50,149 @@ def register(socketio, settings, ctx):
 
     def _voice_disabled_payload() -> dict:
         return {"success": False, "error": "Voice is disabled by admin policy", "error_code": "voice_disabled"}
+
+
+
+    def _voice_setting_int(*names, default=1):
+        for name in names:
+            try:
+                val = settings.get(name)
+                if val is not None and val != "":
+                    return max(1, int(val))
+            except Exception:
+                pass
+        return int(default)
+
+    def _voice_socketio_queue_configured() -> bool:
+        try:
+            queue = str(current_app.config.get("ECHOCHAT_SOCKETIO_MESSAGE_QUEUE") or "").strip()
+            if queue:
+                return True
+        except Exception:
+            pass
+        return bool(str(settings.get("socketio_message_queue") or settings.get("message_queue") or "").strip())
+
+    def _voice_scaled_topology_active() -> bool:
+        instances = _voice_setting_int("production_instance_count", "production_instances", "instance_count", default=1)
+        workers = _voice_setting_int("production_workers", "workers", "worker_count", default=1)
+        return instances > 1 or workers > 1
+
+    def _voice_topology_guard_payload() -> dict | None:
+        """Block voice in unsafe scaled topology instead of lying with 'offline'."""
+        if not _voice_scaled_topology_active():
+            return None
+        queue_ok = _voice_socketio_queue_configured()
+        shared_ok = False
+        try:
+            shared_ok = bool(shared_state_enabled())
+        except Exception:
+            shared_ok = False
+        if queue_ok and shared_ok:
+            return None
+        return {
+            "success": False,
+            "delivered": False,
+            "error": "Voice realtime is not safe for multi-worker mode yet. Set socketio_message_queue and shared_state_redis_url, or run one instance/worker for voice.",
+            "error_code": "voice_realtime_topology_unsafe",
+            "voice_realtime": {
+                "scaled_topology": True,
+                "socketio_message_queue": bool(queue_ok),
+                "shared_state_redis": bool(shared_ok),
+            },
+        }
+
+    def _voice_delivery_snapshot(username: str) -> dict:
+        username = str(username or "").strip()
+        sids = []
+        try:
+            sids = list(_user_sids(username)) if username else []
+        except Exception:
+            sids = []
+        presence = {}
+        try:
+            presence = _get_user_presence_row(username) if username else {}
+        except Exception:
+            presence = {}
+        shared = {}
+        try:
+            shared = shared_state_summary()
+        except Exception:
+            shared = {"enabled": False}
+        return {
+            "username": username,
+            "sid_count": len(sids),
+            "sids": sids[:6],
+            "db_online": bool((presence or {}).get("online")),
+            "presence_status": str((presence or {}).get("presence_status") or ""),
+            "shared_state_enabled": bool(shared.get("enabled")),
+            "socketio_message_queue": _voice_socketio_queue_configured(),
+            "scaled_topology": _voice_scaled_topology_active(),
+        }
+
+    def _voice_delivery_error(target: str, snapshot: dict | None = None) -> tuple[str, str]:
+        snap = snapshot or _voice_delivery_snapshot(target)
+        if snap.get("db_online") and not snap.get("sid_count"):
+            return (
+                "voice_realtime_unavailable",
+                "User appears online, but their realtime voice connection is unavailable. Have them refresh and try again.",
+            )
+        if snap.get("scaled_topology") and (not snap.get("socketio_message_queue") or not snap.get("shared_state_enabled")):
+            return (
+                "voice_realtime_topology_unsafe",
+                "Voice needs Redis realtime queue/shared state in multi-worker mode. Run one worker or enable Redis voice realtime.",
+            )
+        return (
+            "voice_target_not_connected",
+            "User is not connected to realtime right now.",
+        )
+
+    def _voice_log_delivery(event_name: str, sender: str, target: str, call_id: str, delivered: bool, *, reason: str = "") -> dict:
+        sender_snap = _voice_delivery_snapshot(sender)
+        target_snap = _voice_delivery_snapshot(target)
+        payload = {
+            "event": event_name,
+            "sender": sender_snap,
+            "target": target_snap,
+            "call_id": str(call_id or ""),
+            "delivered": bool(delivered),
+            "reason": reason,
+        }
+        if not delivered:
+            try:
+                current_app.logger.warning(
+                    "Voice realtime delivery failed event=%s sender=%s target=%s call_id=%s reason=%s sender_sids=%s target_sids=%s target_db_online=%s target_presence=%s shared_state=%s queue=%s scaled=%s",
+                    event_name,
+                    sender,
+                    target,
+                    call_id,
+                    reason,
+                    sender_snap.get("sid_count"),
+                    target_snap.get("sid_count"),
+                    target_snap.get("db_online"),
+                    target_snap.get("presence_status"),
+                    target_snap.get("shared_state_enabled"),
+                    target_snap.get("socketio_message_queue"),
+                    target_snap.get("scaled_topology"),
+                )
+            except Exception:
+                pass
+        return payload
+
+    def _voice_emit_to_user(sender: str, target: str, event_name: str, payload: dict, call_id: str):
+        delivered = _emit_to_user(target, event_name, payload)
+        diag = _voice_log_delivery(event_name, sender, target, call_id, delivered)
+        return delivered, diag
+
+    def _voice_not_delivered_payload(target: str, diagnostic: dict | None = None) -> dict:
+        snap = ((diagnostic or {}).get("target") or None)
+        code, message = _voice_delivery_error(target, snap)
+        return {"success": True, "delivered": False, "error": message, "error_code": code, "voice_realtime": diagnostic or {}}
+
+    def _voice_dm_ttl(state: str = "active") -> float:
+        if str(state or "") == "invited":
+            return max(float(settings.get("voice_dm_invite_ttl_seconds", 90) or 90), 60)
+        return max(float(settings.get("voice_dm_active_ttl_seconds", 3600) or 3600), 120)
+
 
     def _event_bool(value, default: bool = False) -> bool:
         """Parse Socket.IO media booleans safely.
@@ -142,6 +285,10 @@ def register(socketio, settings, ctx):
             return {"success": False, "error": "Missing room"}
         if voice_on and not _voice_feature_enabled():
             return _voice_disabled_payload()
+        if voice_on:
+            topology_guard = _voice_topology_guard_payload()
+            if topology_guard is not None:
+                return topology_guard
 
         ok, err = _require_not_sanctioned(username, action="voice")
         if not ok:
@@ -646,6 +793,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         rl_resp = _voice_signal_guard(sender, "room_offer")
         if rl_resp is not None:
             return rl_resp
@@ -666,8 +816,10 @@ def register(socketio, settings, ctx):
             return {"success": False, "error": "Not in voice"}
         if to not in set(_voice_room_users(room)):
             return {"success": False, "error": "Recipient not in voice"}
-        delivered = _emit_to_user(to, "voice_room_offer", {"room": room, "sender": sender, "offer": offer, "ice_restart": ice_restart})
-        return {"success": True, "delivered": delivered}
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_room_offer", {"room": room, "sender": sender, "offer": offer, "ice_restart": ice_restart}, f"room:{room}:{sender}:{to}")
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_room_answer")
@@ -682,6 +834,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         rl_resp = _voice_signal_guard(sender, "room_answer")
         if rl_resp is not None:
             return rl_resp
@@ -700,8 +855,10 @@ def register(socketio, settings, ctx):
             return {"success": False, "error": "Not in voice"}
         if to not in set(_voice_room_users(room)):
             return {"success": False, "error": "Recipient not in voice"}
-        delivered = _emit_to_user(to, "voice_room_answer", {"room": room, "sender": sender, "answer": answer})
-        return {"success": True, "delivered": delivered}
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_room_answer", {"room": room, "sender": sender, "answer": answer}, f"room:{room}:{sender}:{to}")
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_room_ice")
@@ -716,6 +873,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         rl_resp = _voice_signal_guard(sender, "room_ice")
         if rl_resp is not None:
             return rl_resp
@@ -734,8 +894,10 @@ def register(socketio, settings, ctx):
             return {"success": False, "error": "Not in voice"}
         if to not in set(_voice_room_users(room)):
             return {"success": False, "error": "Recipient not in voice"}
-        delivered = _emit_to_user(to, "voice_room_ice", {"room": room, "sender": sender, "candidate": candidate})
-        return {"success": True, "delivered": delivered}
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_room_ice", {"room": room, "sender": sender, "candidate": candidate}, f"room:{room}:{sender}:{to}")
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     # 1:1 voice calls (DM-like)
@@ -753,6 +915,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         sid = request.sid
         raw_to = (data or {}).get("to")
         to = _resolve_canonical_username(raw_to)
@@ -784,45 +949,43 @@ def register(socketio, settings, ctx):
 
         _cleanup_voice_dm_sessions()
 
-        with VOICE_DM_SESSIONS_LOCK:
-            existing = VOICE_DM_SESSIONS.get(call_id)
-            if existing:
-                state = str(existing.get("state") or "")
-                if state in {"invited", "active"}:
-                    return {"success": False, "error": "call_id already in use"}
-                # allow overwrite only if stale state got here somehow
+        existing = voice_dm_session_get(call_id)
+        if existing:
+            state = str(existing.get("state") or "")
+            if state in {"invited", "active"}:
+                return {"success": False, "error": "call_id already in use"}
+            # allow overwrite only if stale state got here somehow
 
-            # Prevent duplicate per-pair DM calls. Without this, repeated clicks or
-            # opposite-direction call glare can create two sessions for the same
-            # users and leave one browser stuck in Calling/Incoming.
-            for other_id, other in list(VOICE_DM_SESSIONS.items()):
-                if other_id == call_id:
-                    continue
-                state = str(other.get("state") or "")
-                if state not in {"invited", "active"}:
-                    continue
-                if {other.get("caller"), other.get("callee")} == {sender, to}:
-                    return {"success": False, "error": "Call already pending or active"}
+        # Prevent duplicate per-pair DM calls. Without this, repeated clicks or
+        # opposite-direction call glare can create two sessions for the same
+        # users and leave one browser stuck in Calling/Incoming. This check now
+        # uses shared Redis state when configured, so another worker can see it.
+        for other_id, other in list(voice_dm_session_items()):
+            if other_id == call_id:
+                continue
+            state = str(other.get("state") or "")
+            if state not in {"invited", "active"}:
+                continue
+            if {other.get("caller"), other.get("callee")} == {sender, to}:
+                return {"success": False, "error": "Call already pending or active"}
 
-            VOICE_DM_SESSIONS[call_id] = {
-                "caller": sender,
-                "callee": to,
-                "state": "invited",
-                "created": now,
-                "updated": now,
-            }
+        voice_dm_session_set(call_id, {
+            "caller": sender,
+            "callee": to,
+            "state": "invited",
+            "created": now,
+            "updated": now,
+        }, ttl_seconds=_voice_dm_ttl("invited"))
 
-        delivered = _emit_to_user(to, "voice_dm_invite", {"sender": sender, "call_id": call_id})
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_invite", {"sender": sender, "call_id": call_id}, call_id)
         if not delivered:
-            with VOICE_DM_SESSIONS_LOCK:
-                sess = VOICE_DM_SESSIONS.get(call_id)
-                if sess and sess.get("caller") == sender and sess.get("callee") == to:
-                    try:
-                        del VOICE_DM_SESSIONS[call_id]
-                    except Exception:
-                        pass
+            sess = voice_dm_session_get(call_id)
+            if sess and sess.get("caller") == sender and sess.get("callee") == to:
+                voice_dm_session_delete(call_id)
         log_audit_event(sender, "voice_dm_invite", target=to)
-        return {"success": True, "delivered": bool(delivered)}
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_dm_accept")
@@ -837,6 +1000,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         raw_to = (data or {}).get("to")
         to = _resolve_canonical_username(raw_to)
         call_id = (data or {}).get("call_id")
@@ -856,28 +1022,26 @@ def register(socketio, settings, ctx):
 
         _cleanup_voice_dm_sessions()
 
-        with VOICE_DM_SESSIONS_LOCK:
-            sess = VOICE_DM_SESSIONS.get(call_id)
-            if not sess:
-                return {"success": False, "error": "Unknown/expired call"}
-            if sess.get("callee") != sender or sess.get("caller") != to:
-                return {"success": False, "error": "Not a participant"}
-            if str(sess.get("state") or "") != "invited":
-                return {"success": False, "error": "Call not in invited state"}
-            sess["state"] = "active"
-            sess["updated"] = time.time()
+        sess = voice_dm_session_get(call_id)
+        if not sess:
+            return {"success": False, "error": "Unknown/expired call"}
+        if sess.get("callee") != sender or sess.get("caller") != to:
+            return {"success": False, "error": "Not a participant"}
+        if str(sess.get("state") or "") != "invited":
+            return {"success": False, "error": "Call not in invited state"}
+        sess["state"] = "active"
+        sess["updated"] = time.time()
+        voice_dm_session_set(call_id, sess, ttl_seconds=_voice_dm_ttl("active"))
 
-        delivered = _emit_to_user(to, "voice_dm_accept", {"sender": sender, "call_id": call_id})
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_accept", {"sender": sender, "call_id": call_id}, call_id)
         if not delivered:
-            with VOICE_DM_SESSIONS_LOCK:
-                sess = VOICE_DM_SESSIONS.get(call_id)
-                if sess and {sess.get("caller"), sess.get("callee")} == {sender, to}:
-                    try:
-                        del VOICE_DM_SESSIONS[call_id]
-                    except Exception:
-                        pass
+            sess = voice_dm_session_get(call_id)
+            if sess and {sess.get("caller"), sess.get("callee")} == {sender, to}:
+                voice_dm_session_delete(call_id)
         log_audit_event(sender, "voice_dm_accept", target=to)
-        return {"success": True, "delivered": bool(delivered)}
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_dm_decline")
@@ -910,20 +1074,20 @@ def register(socketio, settings, ctx):
 
         _cleanup_voice_dm_sessions()
 
-        with VOICE_DM_SESSIONS_LOCK:
-            sess = VOICE_DM_SESSIONS.get(call_id)
-            if not sess:
-                return {"success": False, "error": "Unknown/expired call"}
-            if sess.get("callee") != sender or sess.get("caller") != to:
-                return {"success": False, "error": "Not a participant"}
-            try:
-                del VOICE_DM_SESSIONS[call_id]
-            except Exception:
-                pass
+        sess = voice_dm_session_get(call_id)
+        if not sess:
+            return {"success": False, "error": "Unknown/expired call"}
+        if sess.get("callee") != sender or sess.get("caller") != to:
+            return {"success": False, "error": "Not a participant"}
+        voice_dm_session_delete(call_id)
 
-        delivered = _emit_to_user(to, "voice_dm_decline", {"sender": sender, "call_id": call_id, "reason": reason})
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_decline", {"sender": sender, "call_id": call_id, "reason": reason}, call_id)
         log_audit_event(sender, "voice_dm_decline", target=to)
-        return {"success": True, "delivered": delivered}
+        if not delivered:
+            payload = _voice_not_delivered_payload(to, diagnostic)
+            payload["success"] = True
+            return payload
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_dm_end")
@@ -956,23 +1120,23 @@ def register(socketio, settings, ctx):
 
         _cleanup_voice_dm_sessions()
 
-        with VOICE_DM_SESSIONS_LOCK:
-            sess = VOICE_DM_SESSIONS.get(call_id)
-            if not sess:
-                # allow idempotent end
-                sess_ok = True
-            else:
-                if {sess.get("caller"), sess.get("callee")} != {sender, to}:
-                    return {"success": False, "error": "Not a participant"}
-                try:
-                    del VOICE_DM_SESSIONS[call_id]
-                except Exception:
-                    pass
-                sess_ok = True
+        sess = voice_dm_session_get(call_id)
+        if not sess:
+            # allow idempotent end
+            sess_ok = True
+        else:
+            if {sess.get("caller"), sess.get("callee")} != {sender, to}:
+                return {"success": False, "error": "Not a participant"}
+            voice_dm_session_delete(call_id)
+            sess_ok = True
 
-        delivered = _emit_to_user(to, "voice_dm_end", {"sender": sender, "call_id": call_id, "reason": reason})
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_end", {"sender": sender, "call_id": call_id, "reason": reason}, call_id)
         log_audit_event(sender, "voice_dm_end", target=to)
-        return {"success": True, "delivered": delivered, "session": sess_ok}
+        if not delivered:
+            payload = _voice_not_delivered_payload(to, diagnostic)
+            payload["session"] = sess_ok
+            return payload
+        return {"success": True, "delivered": True, "session": sess_ok, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_dm_offer")
@@ -987,6 +1151,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         rl_resp = _voice_signal_guard(sender, "dm_offer")
         if rl_resp is not None:
             return rl_resp
@@ -1013,8 +1180,10 @@ def register(socketio, settings, ctx):
         if err_resp:
             return err_resp
 
-        delivered = _emit_to_user(to, "voice_dm_offer", {"sender": sender, "call_id": call_id, "offer": offer, "ice_restart": ice_restart})
-        return {"success": True, "delivered": delivered}
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_offer", {"sender": sender, "call_id": call_id, "offer": offer, "ice_restart": ice_restart}, call_id)
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_dm_answer")
@@ -1029,6 +1198,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         rl_resp = _voice_signal_guard(sender, "dm_answer")
         if rl_resp is not None:
             return rl_resp
@@ -1054,8 +1226,10 @@ def register(socketio, settings, ctx):
         if err_resp:
             return err_resp
 
-        delivered = _emit_to_user(to, "voice_dm_answer", {"sender": sender, "call_id": call_id, "answer": answer})
-        return {"success": True, "delivered": delivered}
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_answer", {"sender": sender, "call_id": call_id, "answer": answer}, call_id)
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
     @socketio.on("voice_dm_ice")
@@ -1070,6 +1244,9 @@ def register(socketio, settings, ctx):
             return guard
         if not _voice_feature_enabled():
             return _voice_disabled_payload()
+        topology_guard = _voice_topology_guard_payload()
+        if topology_guard is not None:
+            return topology_guard
         rl_resp = _voice_signal_guard(sender, "dm_ice")
         if rl_resp is not None:
             return rl_resp
@@ -1095,8 +1272,10 @@ def register(socketio, settings, ctx):
         if err_resp:
             return err_resp
 
-        delivered = _emit_to_user(to, "voice_dm_ice", {"sender": sender, "call_id": call_id, "candidate": candidate})
-        return {"success": True, "delivered": delivered}
+        delivered, diagnostic = _voice_emit_to_user(sender, to, "voice_dm_ice", {"sender": sender, "call_id": call_id, "candidate": candidate}, call_id)
+        if not delivered:
+            return _voice_not_delivered_payload(to, diagnostic)
+        return {"success": True, "delivered": True, "voice_realtime": diagnostic}
 
 
 

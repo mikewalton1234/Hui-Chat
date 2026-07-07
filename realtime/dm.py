@@ -418,6 +418,25 @@ def register(socketio, settings, ctx):
             strike_reason="dm_typing_rate",
         )
 
+    def _emit_direct_stop_typing(sender: str, to: str) -> bool:
+        """Best-effort PM typing cleanup.
+
+        This is intentionally payload-light and contains no message content.  It is
+        used both for explicit direct_stop_typing events and after a real PM is
+        accepted so the recipient UI never leaves a stale "is typing" line when
+        a browser misses the stop packet.
+        """
+        clean_sender = str(sender or "").strip()
+        clean_to = str(to or "").strip()
+        if not clean_sender or not clean_to or clean_sender.lower() == clean_to.lower():
+            return False
+        if not _feature_bool("enable_dm_typing_indicators", True):
+            return False
+        try:
+            return bool(_emit_to_user(clean_to, "direct_stop_typing", _dm_typing_payload(clean_sender, clean_to, typing=False)))
+        except Exception:
+            return False
+
     @socketio.on("direct_typing")
     @jwt_required()
     def handle_direct_typing(data):
@@ -474,9 +493,9 @@ def register(socketio, settings, ctx):
             return {"success": False, "error": "self_dm_disabled"}
         if _either_blocked(sender, to):
             return {"success": False, "error": "Direct message blocked"}
-        okrl, retry, auto_muted = _direct_typing_rate_ok(sender)
-        if not okrl:
-            return {"success": False, "error": "rate_limited", "retry_after": retry, "auto_muted": auto_muted}
+        # Stop-typing should clear stale receiver UI even when the sender has
+        # been typing too fast. The generic socket_event_guard above still limits
+        # abusive stop loops; do not apply the stricter start-typing strike here.
         shadowbanned_sender = False
         try:
             shadowbanned_sender = bool(_is_effectively_shadowbanned(sender))
@@ -484,7 +503,7 @@ def register(socketio, settings, ctx):
             shadowbanned_sender = False
         delivered = False
         if not shadowbanned_sender:
-            delivered = bool(_emit_to_user(to, "direct_stop_typing", _dm_typing_payload(sender, to, typing=False)))
+            delivered = bool(_emit_direct_stop_typing(sender, to))
         return {"success": True, "to": to, "typing": False, "delivered": delivered}
 
     @socketio.on("send_direct_message")
@@ -611,6 +630,10 @@ def register(socketio, settings, ctx):
             live_payload["id"] = int(unread_id)
             live_payload["message_id"] = int(unread_id)
         delivered = _emit_to_user(to, "private_message", live_payload)
+        try:
+            _emit_direct_stop_typing(sender, to)
+        except Exception:
+            pass
 
         # Do not label a PM as "offline queued" just because Socket.IO could not
         # confirm a live emit. In dev/multi-worker setups a recipient can still

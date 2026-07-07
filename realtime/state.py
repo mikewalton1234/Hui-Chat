@@ -274,6 +274,213 @@ def _redis_client():
     return _SHARED_STATE_CLIENT
 
 
+
+
+# ---------------------------------------------------------------------------
+# Shared voice state helpers
+# ---------------------------------------------------------------------------
+# DM voice and room voice are still safe in one-process development mode, but
+# they must not rely only on process-local dictionaries once multiple workers or
+# multiple one-worker instances are used.  When shared_state_redis_url is set and
+# Redis is reachable, these helpers mirror/read the voice state from Redis so any
+# worker can validate calls and rosters consistently.
+
+def _voice_dm_session_key(call_id: str) -> str:
+    return _state_key("voice", "dm_session", call_id)
+
+
+def _voice_dm_sessions_key() -> str:
+    return _state_key("voice", "dm_sessions")
+
+
+def _voice_room_users_key(room: str) -> str:
+    return _state_key("voice", "room_users", room)
+
+
+def _coerce_voice_dm_session(data) -> dict | None:
+    if not data:
+        return None
+    caller = str(data.get("caller") or "").strip()
+    callee = str(data.get("callee") or "").strip()
+    state = str(data.get("state") or "").strip()
+    if not caller or not callee or not state:
+        return None
+    out = {"caller": caller, "callee": callee, "state": state}
+    for key in ("created", "updated"):
+        try:
+            out[key] = float(data.get(key) or 0)
+        except Exception:
+            out[key] = 0.0
+    return out
+
+
+def voice_dm_session_get(call_id: str) -> dict | None:
+    call_id = str(call_id or "").strip()
+    if not call_id:
+        return None
+    client = _redis_client()
+    if client is not None:
+        try:
+            sess = _coerce_voice_dm_session(client.hgetall(_voice_dm_session_key(call_id)) or {})
+            if sess:
+                return sess
+            try:
+                client.srem(_voice_dm_sessions_key(), call_id)
+            except Exception:
+                pass
+            return None
+        except Exception:
+            return None
+    with VOICE_DM_SESSIONS_LOCK:
+        sess = VOICE_DM_SESSIONS.get(call_id)
+        return dict(sess) if sess else None
+
+
+def voice_dm_session_set(call_id: str, session: dict, *, ttl_seconds: int | float = 3600) -> bool:
+    call_id = str(call_id or "").strip()
+    if not call_id:
+        return False
+    sess = _coerce_voice_dm_session(session or {})
+    if not sess:
+        return False
+    ttl = max(60, int(float(ttl_seconds or 3600)))
+    with VOICE_DM_SESSIONS_LOCK:
+        VOICE_DM_SESSIONS[call_id] = dict(sess)
+    client = _redis_client()
+    if client is not None:
+        try:
+            client.hset(_voice_dm_session_key(call_id), mapping={k: str(v) for k, v in sess.items()})
+            client.expire(_voice_dm_session_key(call_id), ttl)
+            client.sadd(_voice_dm_sessions_key(), call_id)
+            client.expire(_voice_dm_sessions_key(), max(ttl, _SHARED_STATE_SESSION_TTL_SECONDS * 4, 600))
+        except Exception:
+            return False
+    return True
+
+
+def voice_dm_session_delete(call_id: str) -> bool:
+    call_id = str(call_id or "").strip()
+    if not call_id:
+        return False
+    removed = False
+    with VOICE_DM_SESSIONS_LOCK:
+        removed = call_id in VOICE_DM_SESSIONS
+        VOICE_DM_SESSIONS.pop(call_id, None)
+    client = _redis_client()
+    if client is not None:
+        try:
+            client.delete(_voice_dm_session_key(call_id))
+            client.srem(_voice_dm_sessions_key(), call_id)
+            removed = True
+        except Exception:
+            pass
+    return removed
+
+
+def voice_dm_session_items() -> list[tuple[str, dict]]:
+    client = _redis_client()
+    if client is not None:
+        try:
+            ids = sorted(list(client.smembers(_voice_dm_sessions_key()) or []))
+        except Exception:
+            ids = []
+        out: list[tuple[str, dict]] = []
+        stale: list[str] = []
+        for call_id in ids:
+            try:
+                sess = _coerce_voice_dm_session(client.hgetall(_voice_dm_session_key(call_id)) or {})
+            except Exception:
+                sess = None
+            if sess:
+                out.append((call_id, sess))
+            else:
+                stale.append(call_id)
+        if stale:
+            try:
+                client.srem(_voice_dm_sessions_key(), *stale)
+            except Exception:
+                pass
+        return out
+    with VOICE_DM_SESSIONS_LOCK:
+        return [(cid, dict(sess)) for cid, sess in VOICE_DM_SESSIONS.items()]
+
+
+def voice_room_users_shared(room: str) -> list[str]:
+    room = str(room or "").strip()
+    if not room:
+        return []
+    client = _redis_client()
+    if client is not None:
+        try:
+            return sorted([str(u).strip() for u in (client.smembers(_voice_room_users_key(room)) or []) if str(u).strip()])
+        except Exception:
+            return []
+    with VOICE_ROOMS_LOCK:
+        return sorted(list(VOICE_ROOMS.get(room) or set()))
+
+
+def voice_room_add_shared(room: str, username: str, *, max_peers: int = 0) -> tuple[bool, str | None, list[str]]:
+    room = str(room or "").strip()
+    username = str(username or "").strip()
+    if not room or not username:
+        return False, "Missing room/user", []
+    max_peers = max(0, int(max_peers or 0))
+    client = _redis_client()
+    if client is not None:
+        key = _voice_room_users_key(room)
+        try:
+            users = set(str(u).strip() for u in (client.smembers(key) or []) if str(u).strip())
+            if username in users:
+                client.expire(key, max(_SHARED_STATE_SESSION_TTL_SECONDS * 4, 600))
+                return True, None, sorted(users)
+            if max_peers > 0 and len(users) >= max_peers:
+                return False, "Voice room is full.", sorted(users)
+            client.sadd(key, username)
+            client.expire(key, max(_SHARED_STATE_SESSION_TTL_SECONDS * 4, 600))
+            users.add(username)
+            with VOICE_ROOMS_LOCK:
+                VOICE_ROOMS.setdefault(room, set()).add(username)
+            return True, None, sorted(users)
+        except Exception:
+            return False, "Shared voice roster unavailable.", sorted(list(users)) if 'users' in locals() else []
+    with VOICE_ROOMS_LOCK:
+        s = VOICE_ROOMS.setdefault(room, set())
+        if username in s:
+            return True, None, sorted(s)
+        if max_peers > 0 and len(s) >= max_peers:
+            return False, "Voice room is full.", sorted(s)
+        s.add(username)
+        return True, None, sorted(s)
+
+
+def voice_room_remove_shared(room: str, username: str) -> bool:
+    room = str(room or "").strip()
+    username = str(username or "").strip()
+    if not room or not username:
+        return False
+    removed = False
+    with VOICE_ROOMS_LOCK:
+        s = VOICE_ROOMS.get(room)
+        if s and username in s:
+            s.discard(username)
+            removed = True
+            if not s:
+                VOICE_ROOMS.pop(room, None)
+    client = _redis_client()
+    if client is not None:
+        try:
+            key = _voice_room_users_key(room)
+            client.srem(key, username)
+            if int(client.scard(key) or 0) <= 0:
+                client.delete(key)
+            else:
+                client.expire(key, max(_SHARED_STATE_SESSION_TTL_SECONDS * 4, 600))
+            removed = True
+        except Exception:
+            pass
+    return removed
+
+
 def _session_from_hash(data) -> dict | None:
     if not data:
         return None

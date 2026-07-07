@@ -671,6 +671,27 @@ def register(socketio, settings, ctx):
             "ts": time.time(),
         }
 
+    def _room_public_avatar_url(username: str) -> str:
+        clean = str(username or "").strip()
+        if not clean:
+            return ""
+        try:
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT COALESCE(avatar_url, '')
+                      FROM users
+                     WHERE LOWER(username) = LOWER(%s)
+                     LIMIT 1;
+                    """,
+                    (clean,),
+                )
+                row = cur.fetchone()
+            return str(row[0] or "").strip() if row else ""
+        except Exception:
+            return ""
+
     def _same_realtime_user(a: str, b: str) -> bool:
         return str(a or "").strip().lower() == str(b or "").strip().lower()
 
@@ -1203,10 +1224,12 @@ def register(socketio, settings, ctx):
             except Exception:
                 pass
             emit("room_list", {"rooms": rooms}, to=sid)
+            return {"success": True, "rooms": rooms}
 
         except Exception as e:
             print("Error in get_rooms:", e)
             emit("room_list", {"rooms": [], "error": str(e)}, to=sid)
+            return {"success": False, "rooms": [], "error": str(e)}
 
 
 
@@ -2468,11 +2491,13 @@ def register(socketio, settings, ctx):
         ttl_seconds = int((live_meta or {}).get("ttl_seconds") or ttl_seconds)
         _clear_room_typing(room, username, broadcast=not shadowbanned_sender, skip_sid=request.sid)
 
+        sender_avatar_url = _room_public_avatar_url(username)
         if cipher:
             chat_payload = {
                 "room": room,
                 "message_id": message_id,
                 "username": username,
+                "avatar_url": sender_avatar_url,
                 # Compatibility text for older clients (does not reveal plaintext).
                 "message": "🔒 Encrypted message",
                 "encrypted": True,
@@ -2488,6 +2513,7 @@ def register(socketio, settings, ctx):
                 "room": room,
                 "message_id": message_id,
                 "username": username,
+                "avatar_url": sender_avatar_url,
                 "message": message,
                 "encrypted": False,
                 "ts": time.time(),
