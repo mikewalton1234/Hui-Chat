@@ -5,7 +5,7 @@ TRY OUT NOW!!!!   https://Echo-Chat.replit.app
 It includes chat rooms, private messages, group chats, friends, profiles, radio listening, file sharing, torrent/magnet tools, voice chat, webcam sharing, mobile support, and a full admin control panel.
 
 Current build: **0.11.0-beta.429**
-
+https://Echo-Chat.replit.app
 ## What Makes Echo-Chat Special
 
 Echo-Chat is more than a simple chat room. It is built to feel like a full social chat app that you can host yourself.
