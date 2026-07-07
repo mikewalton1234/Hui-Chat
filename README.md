@@ -1,5 +1,5 @@
 # Echo-Chat
-please note: the server hosting echo chat is very slow.... sorry ahead of time.
+please note: the server hosting echo chat is very slow.... paying for a host sucks lol. Sorry ahead of time.
 TRY OUT NOW!!!!   https://Echo-Chat.replit.app
 **Echo-Chat** is a self-hosted chat server for people who want to run their own private chat app.
 
