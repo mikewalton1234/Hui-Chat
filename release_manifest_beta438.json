@@ -1,0 +1,12 @@
+{
+  "version": "v0.11.0-beta.438-firefox-room-live-chat-compat",
+  "base": "v0.11.0-beta.437-room-chat-avatar-roster-fix",
+  "created_at": "2026-07-05T19:30:00-04:00",
+  "changes": [
+    "Firefox/non-Chromium room transcript live-only empty state",
+    "Normalized active room matching for incoming chat_message routing",
+    "Sender-side ACK fallback render if server broadcast is not visible",
+    "Room message visibility diagnostics for no-active-view cases"
+  ],
+  "validation": []
+}

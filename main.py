@@ -968,6 +968,44 @@ def _exec_production_server(settings: dict, settings_path: Path) -> None:
     cmd = [gunicorn, "-c", str(root / "gunicorn_conf.py"), "wsgi:app"]
     os.execvpe(gunicorn, cmd, env)
 
+
+def _run_setup_tui_doctor() -> None:
+    """Print terminal/curses facts needed by the blue setup UI."""
+    print("=== Echo-Chat setup TUI doctor ===")
+    print(f"stdin is TTY:  {os.isatty(0)}")
+    print(f"stdout is TTY: {os.isatty(1)}")
+    print(f"TERM:          {os.environ.get('TERM') or '(empty)'}")
+    print(f"COLORTERM:     {os.environ.get('COLORTERM') or '(empty)'}")
+    print(f"Konsole vars:  KONSOLE_VERSION={os.environ.get('KONSOLE_VERSION') or '(empty)'}")
+    print(f"setup legacy:  ECHOCHAT_SETUP_LEGACY={os.environ.get('ECHOCHAT_SETUP_LEGACY') or '(empty)'}")
+    print(f"setup force:   ECHOCHAT_SETUP_TUI={os.environ.get('ECHOCHAT_SETUP_TUI') or '(empty)'}")
+    if os.environ.get("ECHOCHAT_DOTENV_FILE"):
+        print(f"dotenv file:   {os.environ.get('ECHOCHAT_DOTENV_FILE')}")
+        keys = os.environ.get("ECHOCHAT_DOTENV_KEYS", "")
+        if "ECHOCHAT_SETUP_LEGACY" in {x.strip() for x in keys.split(',') if x.strip()}:
+            print("dotenv note:   ECHOCHAT_SETUP_LEGACY came from .env and will be ignored by setup.")
+    try:
+        size = shutil.get_terminal_size(fallback=(0, 0))
+        print(f"terminal size: {size.columns}x{size.lines}")
+    except Exception as exc:
+        print(f"terminal size: error: {exc}")
+    try:
+        import curses  # type: ignore
+        print("python curses: import OK")
+    except Exception as exc:
+        print(f"python curses: import FAILED: {exc}")
+        return
+    try:
+        curses.setupterm(fd=1)
+        colors = curses.tigetnum("colors")
+        clear = curses.tigetstr("clear") is not None
+        cup = curses.tigetstr("cup") is not None
+        print(f"terminfo:      colors={colors} clear={clear} cursor_address={cup}")
+    except Exception as exc:
+        print(f"terminfo:      FAILED: {exc}")
+    print("Recommendation:")
+    print("  TERM=xterm-256color ECHOCHAT_SETUP_TUI=1 python main.py --setup")
+
 def _setup_bypassing_cli_command(args: argparse.Namespace) -> bool:
     """Return True for explicit CLI actions that must not auto-launch setup.
 
@@ -980,7 +1018,8 @@ def _setup_bypassing_cli_command(args: argparse.Namespace) -> bool:
     if getattr(args, "setup", False):
         return False
     return bool(
-        args.public_beta_check
+        getattr(args, "setup_doctor", False)
+        or args.public_beta_check
         or args.redis_socketio_check
         or args.hosting_help
         or getattr(args, "dynamic_dns_check", False)
@@ -1004,6 +1043,7 @@ def _should_launch_setup(args: argparse.Namespace, *, config_missing_at_start: b
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="configurable chat server")
     p.add_argument("--setup", action="store_true", help="run the interactive setup wizard")
+    p.add_argument("--setup-doctor", action="store_true", help="diagnose terminal/curses support for the blue setup UI and exit")
     mode_group = p.add_mutually_exclusive_group()
     mode_group.add_argument("--production", action="store_true", help="start with the production Gunicorn runner for this launch")
     mode_group.add_argument("--development", action="store_true", help="force the built-in development/LAN runner even when run_mode=production")
@@ -1043,6 +1083,10 @@ def main() -> None:
         config_missing_at_start=config_missing_at_start,
         setup_bypassing_command=setup_bypassing_command,
     )
+
+    if getattr(args, "setup_doctor", False):
+        _run_setup_tui_doctor()
+        return
 
     if should_launch_setup:
         settings = seed_first_run_local_config(settings_path, settings)

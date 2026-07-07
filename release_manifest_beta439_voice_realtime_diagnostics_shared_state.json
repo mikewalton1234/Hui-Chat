@@ -1,0 +1,22 @@
+{
+  "version": "v0.11.0-beta.439-voice-realtime-diagnostics-shared-state",
+  "base": "v0.11.0-beta.438-firefox-room-live-chat-compat",
+  "date": "2026-07-05",
+  "summary": "Adds voice realtime diagnostics, replaces misleading offline voice errors, and moves voice DM/room state through shared Redis helpers when configured.",
+  "changes": [
+    "Added failed voice-delivery logging with sender/target sid counts and presence diagnostics.",
+    "Changed DM voice invite/accept frontend errors to realtime-unavailable wording instead of offline wording.",
+    "Added voice ACK diagnostic payloads for not-delivered cases.",
+    "Added shared-state helpers for DM voice sessions.",
+    "Added shared-state helpers for room voice rosters.",
+    "Updated block/disconnect cleanup to delete voice sessions through shared helper functions.",
+    "Added topology guard for unsafe multi-worker voice configurations."
+  ],
+  "validation": [
+    "python -m compileall -q .",
+    "node --check on all static JS files",
+    "shared voice-state fallback smoke test",
+    "zip integrity test",
+    "sha256 verification"
+  ]
+}

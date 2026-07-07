@@ -1090,6 +1090,12 @@ def create_app(
         socketio_origin = _origin_for_csp(socketio_client_url)
         if socketio_origin and socketio_origin not in script_src:
             script_src.append(socketio_origin)
+        # Allow the built-in local Socket.IO bootstrap loader to fall back to the
+        # official Socket.IO browser bundle when static/vendor/socket.io.min.js
+        # has not been replaced with a real local bundle yet.
+        socketio_cdn_origin = "https://cdn.socket.io"
+        if socketio_cdn_origin not in script_src:
+            script_src.append(socketio_cdn_origin)
         for sound_pack_url in sanitize_sound_pack_external_urls(settings.get("sound_pack_external_urls")):
             sound_pack_origin = _origin_for_csp(sound_pack_url)
             if sound_pack_origin and sound_pack_origin not in script_src:
@@ -1232,7 +1238,7 @@ def create_app(
             # Versioned static assets are requested as /static/...?...v=<APP_VERSION>.
             # Treat those URLs as immutable so reloads do not generate dozens of
             # conditional requests for split chat runtime files, CSS, and lazy-loaded vendor files.
-            static_asset_roots = ("/static/css/", "/static/js/", "/static/vendor/")
+            static_asset_roots = ("/static/css/", "/static/js/", "/static/vendor/", "/static/emoticons/")
             if request.path.startswith(static_asset_roots) and request.args.get("v"):
                 resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
 

@@ -4141,6 +4141,10 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
             "emoticons_local_root": "rawstr",
             "emoticons_external_asset_base_url": "rawstr",
             "emoticons_animation_stop_ms": "rawstr",
+            "emoticons_boot_preload_enabled": "bool",
+            "emoticons_boot_preload_limit": "rawstr",
+            "emoticons_boot_preload_concurrency": "rawstr",
+            "emoticons_catalog_cache_seconds": "rawstr",
             "emoticons_custom_entries": "jsonlist",
             # client sender labels / message grouping
             "room_show_sender_every_message": "bool",
@@ -4307,6 +4311,10 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
                 "emoticons_local_root": "emoticons",
                 "emoticons_external_asset_base_url": "https://github.com/chinhodado/ym_emo_fb",
                 "emoticons_animation_stop_ms": 4500,
+                "emoticons_boot_preload_enabled": True,
+                "emoticons_boot_preload_limit": 180,
+                "emoticons_boot_preload_concurrency": 4,
+                "emoticons_catalog_cache_seconds": 86400,
                 "emoticons_custom_entries": [],
             }
             for key, default_value in emoticon_defaults.items():
@@ -4516,6 +4524,21 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
                 patch["emoticons_animation_stop_ms"] = max(0, min(60000, int(str(patch.get("emoticons_animation_stop_ms") or "4500").strip())))
             except Exception:
                 patch["emoticons_animation_stop_ms"] = 4500
+        if "emoticons_boot_preload_limit" in patch:
+            try:
+                patch["emoticons_boot_preload_limit"] = max(0, min(240, int(str(patch.get("emoticons_boot_preload_limit") or "180").strip())))
+            except Exception:
+                patch["emoticons_boot_preload_limit"] = 180
+        if "emoticons_boot_preload_concurrency" in patch:
+            try:
+                patch["emoticons_boot_preload_concurrency"] = max(1, min(8, int(str(patch.get("emoticons_boot_preload_concurrency") or "4").strip())))
+            except Exception:
+                patch["emoticons_boot_preload_concurrency"] = 4
+        if "emoticons_catalog_cache_seconds" in patch:
+            try:
+                patch["emoticons_catalog_cache_seconds"] = max(0, min(31536000, int(str(patch.get("emoticons_catalog_cache_seconds") or "86400").strip())))
+            except Exception:
+                patch["emoticons_catalog_cache_seconds"] = 86400
         if "emoticons_custom_entries" in patch:
             clean_custom = []
             seen_names = set()

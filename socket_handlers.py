@@ -66,6 +66,15 @@ from realtime.state import (
     live_room_counts as shared_live_room_counts,
     room_users as shared_room_users,
     user_sids as shared_user_sids,
+    shared_state_enabled,
+    shared_state_summary,
+    voice_dm_session_get,
+    voice_dm_session_set,
+    voice_dm_session_delete,
+    voice_dm_session_items,
+    voice_room_users_shared,
+    voice_room_add_shared,
+    voice_room_remove_shared,
 )
 
 
@@ -560,6 +569,57 @@ def register_socketio_handlers(socketio, settings):
 
         return sorted(users, key=lambda u: str(u).lower())
 
+    def _room_roster_avatar_map(usernames: list[str]) -> dict:
+        """Return viewer-safe avatar URLs for a room roster without changing the roster shape.
+
+        The browser historically received room_users as a plain list of names.
+        Keep that compatibility, but attach a side map so chat bubbles and the
+        room-user panel can render profile pictures for people who are not on
+        the viewer's friends list yet.
+        """
+        clean: list[str] = []
+        seen: set[str] = set()
+        for raw in usernames or []:
+            name = str(raw or "").strip()
+            key = name.lower()
+            if not name or not key or key in seen:
+                continue
+            seen.add(key)
+            clean.append(name)
+            if len(clean) >= 500:
+                break
+        if not clean:
+            return {}
+
+        out = {name: "" for name in clean}
+        try:
+            conn = get_db()
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT username, COALESCE(avatar_url, '')
+                      FROM users
+                     WHERE LOWER(username) = ANY(%s);
+                    """,
+                    ([name.lower() for name in clean],),
+                )
+                rows = cur.fetchall() or []
+            by_key = {str(row[0] or "").strip().lower(): str(row[1] or "").strip() for row in rows}
+            for name in clean:
+                out[name] = by_key.get(name.lower(), "")
+        except Exception:
+            pass
+        return out
+
+    def _room_roster_profiles_from_avatars(avatars: dict) -> dict:
+        profiles = {}
+        for name, avatar_url in (avatars or {}).items():
+            clean = str(name or "").strip()
+            if not clean:
+                continue
+            profiles[clean] = {"username": clean, "avatar_url": str(avatar_url or "").strip()}
+        return profiles
+
     def _emit_room_users_snapshot(room: str, *, to_sid: str | None = None) -> dict:
         """Emit and return a bounded, de-duplicated users-panel snapshot.
 
@@ -570,7 +630,15 @@ def register_socketio_handlers(socketio, settings):
         browser can label blocked users without removing them from the room.
         """
         room_name = str(room or "").strip()
-        base_payload = {"room": room_name, "users": [], "count": 0, "ts": time.time(), "source": "live_roster"}
+        base_payload = {
+            "room": room_name,
+            "users": [],
+            "count": 0,
+            "ts": time.time(),
+            "source": "live_roster",
+            "avatars": {},
+            "user_profiles": {},
+        }
 
         try:
             users = set()
@@ -579,7 +647,13 @@ def register_socketio_handlers(socketio, settings):
                 if name:
                     users.add(name)
             sorted_users = sorted(users, key=lambda u: u.lower())
-            base_payload.update({"users": sorted_users, "count": len(sorted_users)})
+            base_avatars = _room_roster_avatar_map(sorted_users)
+            base_payload.update({
+                "users": sorted_users,
+                "count": len(sorted_users),
+                "avatars": base_avatars,
+                "user_profiles": _room_roster_profiles_from_avatars(base_avatars),
+            })
 
             def _viewer_from_sid(sid: str | None) -> str:
                 sid = str(sid or "").strip()
@@ -630,6 +704,11 @@ def register_socketio_handlers(socketio, settings):
                         except Exception:
                             pass
 
+                avatars = dict(base_avatars)
+                missing_avatar_names = [name for name in visible if name not in avatars]
+                if missing_avatar_names:
+                    avatars.update(_room_roster_avatar_map(missing_avatar_names))
+
                 return {
                     **base_payload,
                     "users": visible,
@@ -638,6 +717,8 @@ def register_socketio_handlers(socketio, settings):
                     "blocked_by_me": blocked_by_me,
                     "blocks_me": blocks_me,
                     "self_healed_empty_roster": bool(self_healed_empty_roster),
+                    "avatars": avatars,
+                    "user_profiles": _room_roster_profiles_from_avatars(avatars),
                 }
 
             if to_sid:
@@ -825,19 +906,12 @@ def register_socketio_handlers(socketio, settings):
         invite_ttl = float(settings.get("voice_dm_invite_ttl_seconds", 90) or 90)
         active_ttl = float(settings.get("voice_dm_active_ttl_seconds", 3600) or 3600)
         now = time.time()
-        with VOICE_DM_SESSIONS_LOCK:
-            stale = []
-            for cid, s in VOICE_DM_SESSIONS.items():
-                state = str(s.get("state") or "")
-                updated = float(s.get("updated", s.get("created", now)))
-                ttl = invite_ttl if state == "invited" else active_ttl
-                if (now - updated) > ttl:
-                    stale.append(cid)
-            for cid in stale:
-                try:
-                    del VOICE_DM_SESSIONS[cid]
-                except Exception:
-                    pass
+        for cid, s in list(voice_dm_session_items()):
+            state = str(s.get("state") or "")
+            updated = float(s.get("updated", s.get("created", now)) or now)
+            ttl = invite_ttl if state == "invited" else active_ttl
+            if (now - updated) > ttl:
+                voice_dm_session_delete(cid)
 
     def _voice_dm_end_for_users(a: str, b: str, call_id: str, reason: str) -> None:
         # Best-effort notify both sides (other side will ignore if not in UI state).
@@ -846,37 +920,17 @@ def register_socketio_handlers(socketio, settings):
 
 
     # ------------------------------------------------------------------
-    # Voice helpers (in-memory roster)
+    # Voice helpers (shared Redis when configured, in-process fallback otherwise)
     # ------------------------------------------------------------------
     def _voice_room_users(room: str) -> list[str]:
-        with VOICE_ROOMS_LOCK:
-            users = VOICE_ROOMS.get(room) or set()
-            return sorted(users)
+        return voice_room_users_shared(room)
 
     def _voice_room_add(room: str, username: str) -> tuple[bool, str | None, list[str]]:
         """Add user to Echo Voice roster. Returns (ok, error, roster)."""
-        max_peers = echo_voice_room_limit(settings)
-        with VOICE_ROOMS_LOCK:
-            s = VOICE_ROOMS.setdefault(room, set())
-            if username in s:
-                return True, None, sorted(s)
-            if max_peers > 0 and len(s) >= max_peers:
-                return False, "Voice room is full.", sorted(s)
-            s.add(username)
-            return True, None, sorted(s)
+        return voice_room_add_shared(room, username, max_peers=echo_voice_room_limit(settings))
 
     def _voice_room_remove(room: str, username: str) -> bool:
-        with VOICE_ROOMS_LOCK:
-            s = VOICE_ROOMS.get(room)
-            if not s or username not in s:
-                return False
-            s.discard(username)
-            if not s:
-                try:
-                    del VOICE_ROOMS[room]
-                except Exception:
-                    pass
-            return True
+        return voice_room_remove_shared(room, username)
 
 
     # ------------------------------------------------------------------
@@ -2159,16 +2213,20 @@ def register_socketio_handlers(socketio, settings):
 
     def _voice_dm_require_active(sender: str, to: str, call_id: str):
         _cleanup_voice_dm_sessions()
-        with VOICE_DM_SESSIONS_LOCK:
-            sess = VOICE_DM_SESSIONS.get(call_id)
-            if not sess:
-                return None, {"success": False, "error": "Unknown/expired call"}
-            if {sess.get("caller"), sess.get("callee")} != {sender, to}:
-                return None, {"success": False, "error": "Not a participant"}
-            if str(sess.get("state") or "") != "active":
-                return None, {"success": False, "error": "Call not active"}
-            sess["updated"] = time.time()
-            return sess, None
+        sess = voice_dm_session_get(call_id)
+        if not sess:
+            return None, {"success": False, "error": "Unknown/expired call"}
+        if {sess.get("caller"), sess.get("callee")} != {sender, to}:
+            return None, {"success": False, "error": "Not a participant"}
+        if str(sess.get("state") or "") != "active":
+            return None, {"success": False, "error": "Call not active"}
+        sess["updated"] = time.time()
+        try:
+            ttl = max(float(settings.get("voice_dm_active_ttl_seconds", 3600) or 3600), 120)
+        except Exception:
+            ttl = 3600
+        voice_dm_session_set(call_id, sess, ttl_seconds=ttl)
+        return sess, None
 
 
     # ───────────────────────────────────────────────────────────────────

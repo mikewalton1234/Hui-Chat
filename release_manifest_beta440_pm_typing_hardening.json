@@ -1,0 +1,24 @@
+{
+  "version": "v0.11.0-beta.440-pm-typing-hardening",
+  "title": "Private-message typing hardening",
+  "base": "v0.11.0-beta.439-voice-realtime-diagnostics-shared-state",
+  "date": "2026-07-05",
+  "summary": "Hardens private-message typing indicators so start/stop typing packets render and clear reliably across send, focus, close, reconnect, and late-window-open races.",
+  "changes": [
+    "Centralized PM/group typing start logic in the frontend.",
+    "Re-rendered existing inbound typing state when PM windows open late.",
+    "Added focus, composition-end, visibility, pagehide, disconnect, and reconnect handling for conversation typing state.",
+    "Reset typing throttle after stop events so new typing bursts can be shown immediately.",
+    "Added server-side direct_stop_typing cleanup after accepted direct messages.",
+    "Kept stop-typing cleanup under the generic Socket.IO event guard while avoiding stricter start-typing strike behavior."
+  ],
+  "validation": [
+    "python -m py_compile realtime/dm.py",
+    "node --check static/js/chat_parts/0043_group_history_dm_windows.js",
+    "python tools/pm_typing_hardening_doctor.py",
+    "python -m compileall -q .",
+    "node --check on all static JS files",
+    "zip integrity test",
+    "sha256 verification"
+  ]
+}

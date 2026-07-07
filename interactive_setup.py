@@ -20,6 +20,7 @@ except Exception:  # pragma: no cover - depends on platform terminal support
     curses = None  # type: ignore[assignment]
 import getpass
 import json
+import locale
 import os
 import re
 import shutil
@@ -89,6 +90,7 @@ from db.bootstrap import (
     ensure_database_ready,
     ensure_database_ready_via_local_admin as _ensure_database_ready_via_local_admin_impl,
     is_protected_database_name,
+    target_database_status as _target_database_status_impl,
     validate_echochat_database as _validate_echochat_database_impl,
 )
 
@@ -465,6 +467,10 @@ def get_default_settings() -> Dict[str, Any]:
         "emoticons_local_root": "emoticons",
         "emoticons_external_asset_base_url": "https://github.com/chinhodado/ym_emo_fb",
         "emoticons_animation_stop_ms": 4500,
+        "emoticons_boot_preload_enabled": True,
+        "emoticons_boot_preload_limit": 180,
+        "emoticons_boot_preload_concurrency": 4,
+        "emoticons_catalog_cache_seconds": 86400,
         "emoticons_custom_entries": [],
         "sound_pack_default": "echo_modern_generated",
         "sound_theme_default": "soft_chime",
@@ -1121,6 +1127,11 @@ def _discover_existing_server_database_candidates(dsn: str, bootstrap_dsn: str |
 def _validate_echochat_database(dsn: str) -> dict[str, Any]:
     """Check whether the current PostgreSQL target looks valid for Echo-Chat."""
     return _validate_echochat_database_impl(dsn)
+
+
+def _target_database_status(dsn: str, bootstrap_dsn: str | None = None) -> dict[str, Any]:
+    """Check whether the configured PostgreSQL target database exists at all."""
+    return _target_database_status_impl(dsn, bootstrap_dsn=bootstrap_dsn)
 
 
 def _ensure_database_ready(dsn: str, *, recreate: bool = False, bootstrap_dsn: str | None = None) -> dict[str, Any]:
@@ -2380,26 +2391,58 @@ def _color_pair_hl() -> int:
 
 
 def _init_tui_colors() -> None:
-    if curses.has_colors():
+    """Initialize setup TUI colors in the safest ncurses order."""
+    try:
         curses.start_color()
+    except Exception:
+        return
+    try:
+        if not curses.has_colors():
+            return
+    except Exception:
+        return
+    try:
         curses.use_default_colors()
-        try:
-            curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)
-            curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLUE)
-            curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLUE)
-            curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLUE)
-            curses.init_pair(5, curses.COLOR_GREEN, curses.COLOR_BLUE)
-        except Exception:
-            pass
+    except Exception:
+        pass
+    try:
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLUE)
+        curses.init_pair(2, curses.COLOR_YELLOW, curses.COLOR_BLUE)
+        curses.init_pair(3, curses.COLOR_CYAN, curses.COLOR_BLUE)
+        curses.init_pair(4, curses.COLOR_RED, curses.COLOR_BLUE)
+        curses.init_pair(5, curses.COLOR_GREEN, curses.COLOR_BLUE)
+    except Exception:
+        pass
+
+def _safe_curs_set(visible: int) -> None:
+    """Best-effort cursor visibility change for the setup TUI.
+
+    Some terminals report curses support but reject curs_set(), which previously
+    caused the blue setup UI to silently fall back to the plain legacy prompts.
+    Cursor visibility is cosmetic, so keep the full-screen UI alive when the
+    terminal refuses it.
+    """
+    try:
+        curses.curs_set(visible)
+    except Exception:
+        pass
 
 
 def _draw_box(stdscr, title: str, footer: str | None = None) -> tuple[int, int]:
     title = _brand_ui_text(title)
     footer = _brand_ui_text(footer) if footer is not None else None
-    stdscr.erase()
     h, w = stdscr.getmaxyx()
     bg = _color_pair_bg()
-    stdscr.bkgd(" ", bg)
+    # Set the background before clearing so the full screen repaints blue.
+    try:
+        stdscr.bkgdset(" ", bg)
+    except Exception:
+        pass
+    stdscr.erase()
+    try:
+        stdscr.bkgd(" ", bg)
+    except Exception:
+        pass
     stdscr.attron(bg)
     stdscr.box()
     header = f" {PROJECT_NAME} Setup "
@@ -2443,7 +2486,7 @@ def _tui_message(stdscr, title: str, lines: list[str], pause: bool = True, error
 def _tui_input(stdscr, title: str, prompt: str, initial: str = "", secret: bool = False) -> str:
     title = _brand_ui_text(title)
     prompt = _brand_ui_text(prompt)
-    curses.curs_set(1)
+    _safe_curs_set(1)
     value = list(str(initial or ""))
     while True:
         h, w = _draw_box(stdscr, title, "Type to edit, Enter to accept, Esc to keep current value")
@@ -2457,10 +2500,10 @@ def _tui_input(stdscr, title: str, prompt: str, initial: str = "", secret: bool 
         stdscr.refresh()
         ch = stdscr.get_wch()
         if ch in ("\n", "\r"):
-            curses.curs_set(0)
+            _safe_curs_set(0)
             return "".join(value)
         if ch == "\x1b":
-            curses.curs_set(0)
+            _safe_curs_set(0)
             return str(initial or "")
         if ch in (curses.KEY_BACKSPACE, "\b", "\x7f"):
             if value:
@@ -2866,6 +2909,10 @@ def _collect_setup_summary_lines(merged: Dict[str, Any], runtime: Dict[str, Any]
     detected_dsn = str(runtime.get('detected_dsn') or '').strip()
     detected_candidates = list(runtime.get('detected_candidates') or [])
     validation_report = runtime.get('db_validation_report') or {}
+    target_status = runtime.get('target_database_status') or {}
+    target_status_text = '(not checked)'
+    if isinstance(target_status, dict) and target_status:
+        target_status_text = ('exists' if bool(target_status.get('exists')) else 'not found') + ' / ' + str(target_status.get('state') or 'unknown').replace('_', ' ')
     if detected_dsn:
         try:
             detected_text = str(dsn_parts(detected_dsn).get('db') or detected_dsn)
@@ -2901,6 +2948,7 @@ def _collect_setup_summary_lines(merged: Dict[str, Any], runtime: Dict[str, Any]
         f"  PostgreSQL port: {str(parts.get('port') or 5432)}",
         f"  Database name: {str(parts.get('db') or '(not set)')}",
         f"  Bootstrap/admin DSN saved: {'yes' if str(merged.get('database_bootstrap_url') or '').strip() else 'no'}",
+        f"  Configured target database status: {target_status_text}",
         f"  Auto-detected Echo-Chat database: {detected_text or '(none found)'}",
         f"  Current database validation: {validation_text}",
         '',
@@ -3120,7 +3168,7 @@ def _suspend_curses_for_command(stdscr, callback, *args, **kwargs):
 
 
 
-def _db_summary_lines(merged: Dict[str, Any], detected_dsn: str | None, status: str | None = None, candidates: Optional[list[dict[str, Any]]] = None, validation_report: Optional[dict[str, Any]] = None) -> list[str]:
+def _db_summary_lines(merged: Dict[str, Any], detected_dsn: str | None, status: str | None = None, candidates: Optional[list[dict[str, Any]]] = None, validation_report: Optional[dict[str, Any]] = None, target_status: Optional[dict[str, Any]] = None) -> list[str]:
     lines = []
     configured_db = None
     detected_db = None
@@ -3134,6 +3182,12 @@ def _db_summary_lines(merged: Dict[str, Any], detected_dsn: str | None, status: 
             lines.append(f"Configured PostgreSQL target: user={parts.get('user') or '(blank)'} host={parts.get('host')} port={parts.get('port')} db={configured_db}")
         except Exception:
             lines.append("Configured PostgreSQL target: invalid DSN")
+    target_status = dict(target_status or {})
+    if target_status:
+        t_state = str(target_status.get("state") or "unknown").replace("_", " ")
+        t_exists = "exists" if bool(target_status.get("exists")) else "not found"
+        t_conn = "connectable" if bool(target_status.get("connectable")) else "not connectable/inspectable yet"
+        lines.append(f"Configured target database status: {t_exists}; {t_state}; {t_conn}")
     candidates = list(candidates or [])
     if candidates:
         lines.append(f"Detected Echo-Chat databases: {len(candidates)}")
@@ -4443,11 +4497,20 @@ def _database_candidate_label(candidate: dict[str, Any]) -> str:
 def _refresh_database_discovery(merged: Dict[str, Any], runtime: Dict[str, Any]) -> None:
     runtime["detected_candidates"] = []
     runtime["detected_dsn"] = None
+    runtime["target_database_status"] = None
     target = str(merged.get("database_url") or "").strip()
     bootstrap = str(merged.get("database_bootstrap_url") or "").strip() or None
     if not target:
         runtime["db_status"] = "Database auto-discovery skipped because no PostgreSQL target is configured."
         return
+
+    target_status: dict[str, Any] = {}
+    try:
+        target_status = _target_database_status(target, bootstrap_dsn=bootstrap)
+    except Exception as exc:
+        target_status = {"exists": False, "connectable": False, "inspectable": False, "state": "check_failed", "error": str(exc)}
+    runtime["target_database_status"] = target_status
+
     candidates = _discover_existing_server_database_candidates(target, bootstrap_dsn=bootstrap)
     runtime["detected_candidates"] = candidates
     if len(candidates) == 1:
@@ -4456,7 +4519,18 @@ def _refresh_database_discovery(merged: Dict[str, Any], runtime: Dict[str, Any])
     elif len(candidates) > 1:
         runtime["db_status"] = f"Multiple Echo-Chat databases were detected ({len(candidates)}). Open 'Select detected Echo-Chat database' and choose the one this server should use."
     else:
-        runtime["db_status"] = "No existing Echo-Chat database was found with the current connection details."
+        target_db = str(target_status.get("database") or "configured target")
+        target_state = str(target_status.get("state") or "unknown")
+        if bool(target_status.get("exists")) and target_state == "empty":
+            runtime["db_status"] = f"Configured target database '{target_db}' already exists and is empty. No Echo-Chat tables were found yet; setup/runtime migrations can initialize it."
+        elif bool(target_status.get("exists")) and target_state == "foreign_schema":
+            runtime["db_status"] = f"Configured target database '{target_db}' exists, but it does not look like an Echo-Chat database. Validate it before saving or choose/create another database."
+        elif bool(target_status.get("exists")) and target_state == "exists_inaccessible":
+            runtime["db_status"] = f"Configured target database '{target_db}' exists, but the configured PostgreSQL role cannot inspect it yet. Use 'Create current target database if needed' or local postgres admin repair to grant access."
+        elif bool(target_status.get("exists")):
+            runtime["db_status"] = f"Configured target database '{target_db}' exists, but no complete Echo-Chat database was auto-detected yet. Validate or initialize the target database."
+        else:
+            runtime["db_status"] = "No existing Echo-Chat database was found with the current connection details, and the configured target database does not appear to exist yet."
 
 
 
@@ -4828,6 +4902,52 @@ class _CursesSetupUI:
     pass
 
 
+
+def _setup_env_truthy(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _setup_env_loaded_from_dotenv(name: str) -> bool:
+    keys = {part.strip() for part in os.getenv("ECHOCHAT_DOTENV_KEYS", "").split(",") if part.strip()}
+    return name in keys
+
+
+def _prepare_setup_tui_environment() -> list[str]:
+    """Normalize terminal details before curses starts and return diagnostic notes."""
+    notes: list[str] = []
+    try:
+        locale.setlocale(locale.LC_ALL, "")
+    except Exception:
+        pass
+    term = os.getenv("TERM", "").strip()
+    if not term or term.lower() == "dumb":
+        os.environ["TERM"] = "xterm-256color"
+        notes.append("TERM was missing/dumb, so setup forced TERM=xterm-256color for the blue TUI.")
+    return notes
+
+
+def _format_setup_tui_failure(reason: str, notes: list[str] | None = None) -> str:
+    notes = notes or []
+    detail = [
+        "Blue setup UI could not start.",
+        f"Reason: {reason}",
+        f"TERM={os.getenv('TERM', '') or '(empty)'}",
+        f"stdin_tty={os.isatty(0)} stdout_tty={os.isatty(1)}",
+    ]
+    if os.getenv("ECHOCHAT_DOTENV_FILE"):
+        detail.append(f"dotenv={os.getenv('ECHOCHAT_DOTENV_FILE')}")
+    for note in notes:
+        detail.append(note)
+    detail.extend([
+        "Run this doctor command for details:",
+        "  python main.py --setup-doctor",
+        "To intentionally use the old prompt setup:",
+        "  ECHOCHAT_SETUP_LEGACY=1 python main.py --setup",
+        "To allow the old prompt setup only as an emergency fallback:",
+        "  ECHOCHAT_SETUP_ALLOW_PLAIN_FALLBACK=1 python main.py --setup",
+    ])
+    return "\n".join(detail)
+
 def _run_setup_tui(settings: Dict[str, Any]) -> Dict[str, Any]:
     base = get_default_settings()
     seed = normalize_setup_settings(settings)
@@ -4877,8 +4997,16 @@ def _run_setup_tui(settings: Dict[str, Any]) -> Dict[str, Any]:
                 advance=advance,
             )
 
-        curses.curs_set(0)
-        stdscr.keypad(True)
+        _safe_curs_set(0)
+        try:
+            stdscr.keypad(True)
+        except Exception:
+            pass
+        try:
+            curses.noecho()
+            curses.cbreak()
+        except Exception:
+            pass
         _init_tui_colors()
         stdscr.timeout(-1)
         try:
@@ -4887,7 +5015,7 @@ def _run_setup_tui(settings: Dict[str, Any]) -> Dict[str, Any]:
             runtime["db_status"] = f"Database auto-discovery could not complete: {exc}"
 
         while True:
-            intro = _db_summary_lines(merged, runtime.get("detected_dsn"), runtime.get("db_status"), runtime.get("detected_candidates"), runtime.get("db_validation_report"))
+            intro = _db_summary_lines(merged, runtime.get("detected_dsn"), runtime.get("db_status"), runtime.get("detected_candidates"), runtime.get("db_validation_report"), runtime.get("target_database_status"))
             readiness_preview = _collect_setup_readiness_lines(merged, runtime)[:6]
             progress_preview = [_setup_next_action_line(merged, runtime)]
             choice = _tui_menu(
@@ -4918,7 +5046,7 @@ def _run_setup_tui(settings: Dict[str, Any]) -> Dict[str, Any]:
             if choice == 0:
                 db_menu_selected = 0
                 while True:
-                    db_intro = _db_summary_lines(merged, runtime.get("detected_dsn"), runtime.get("db_status"), runtime.get("detected_candidates"), runtime.get("db_validation_report")) + [
+                    db_intro = _db_summary_lines(merged, runtime.get("detected_dsn"), runtime.get("db_status"), runtime.get("detected_candidates"), runtime.get("db_validation_report"), runtime.get("target_database_status")) + [
                         "",
                         "This menu separates the PostgreSQL connection from the Echo-Chat owner account so they are easier to understand.",
                         "Edit database connection lets you choose the PostgreSQL role, password, host, port, and database name directly.",
@@ -5292,22 +5420,44 @@ def _run_setup_tui(settings: Dict[str, Any]) -> Dict[str, Any]:
 def interactive_setup(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Run the Echo-Chat setup wizard.
 
-    Default behavior is a keyboard-driven full-screen terminal UI that works
-    like a classic blue setup menu. If the current terminal is not interactive,
-    or curses is unavailable, EchoChat falls back to the legacy prompt wizard.
+    Default behavior is the blue full-screen terminal UI. The old plain prompt
+    wizard is now opt-in only, because silently falling back made setup look
+    broken and hid the real terminal/curses reason.
     """
-    use_legacy = os.getenv("ECHOCHAT_SETUP_LEGACY", "").strip().lower() in {"1", "true", "yes", "on"}
+    notes = _prepare_setup_tui_environment()
+    use_legacy = _setup_env_truthy("ECHOCHAT_SETUP_LEGACY")
+    force_tui = _setup_env_truthy("ECHOCHAT_SETUP_TUI")
+    allow_plain_fallback = _setup_env_truthy("ECHOCHAT_SETUP_ALLOW_PLAIN_FALLBACK")
+
+    # Do not let a stale project .env pin every future setup run to the old
+    # prompt UI. A shell-exported ECHOCHAT_SETUP_LEGACY still works.
+    if use_legacy and _setup_env_loaded_from_dotenv("ECHOCHAT_SETUP_LEGACY") and not force_tui:
+        notes.append("Ignored ECHOCHAT_SETUP_LEGACY from the project .env; use a shell variable for one-off legacy setup.")
+        use_legacy = False
+
     curses_unavailable = curses is None
-    if use_legacy or curses_unavailable or not os.isatty(0) or not os.isatty(1):
+    not_tty = not os.isatty(0) or not os.isatty(1)
+
+    if use_legacy and not force_tui:
+        print("⚠️  Using old plain setup because ECHOCHAT_SETUP_LEGACY=1 was set in the shell.")
         return _interactive_setup_legacy(settings)
+
+    if curses_unavailable or (not_tty and not force_tui):
+        reason = "curses is unavailable" if curses_unavailable else "stdin/stdout is not a terminal"
+        if allow_plain_fallback:
+            print(f"⚠️  Blue setup UI unavailable ({reason}); using the plain setup prompts because ECHOCHAT_SETUP_ALLOW_PLAIN_FALLBACK=1.")
+            return _interactive_setup_legacy(settings)
+        raise SystemExit(_format_setup_tui_failure(reason, notes))
+
     try:
         merged = _run_setup_tui(settings)
     except KeyboardInterrupt:
         raise SystemExit(1)
     except Exception as exc:
-        if curses is not None and isinstance(exc, curses.error):
+        if allow_plain_fallback:
+            print(f"⚠️  Blue setup UI failed ({exc}); using the plain setup prompts because ECHOCHAT_SETUP_ALLOW_PLAIN_FALLBACK=1.")
             return _interactive_setup_legacy(settings)
-        raise
+        raise SystemExit(_format_setup_tui_failure(str(exc), notes)) from exc
 
     merged.pop("__admin_raw_password", None)
     merged.pop("__admin_recovery_pin", None)

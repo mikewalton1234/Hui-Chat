@@ -1,0 +1,19 @@
+{
+  "version": "v0.11.0-beta.434-enduser-gui-socketio-boot-fix",
+  "created_at": "2026-07-05T18:45:00Z",
+  "summary": "Fix blank end-user GUI caused by missing Socket.IO browser client placeholder and cascading frontend bootstrap errors.",
+  "root_cause": "static/vendor/socket.io.min.js was a placeholder, so window.io was undefined. 0001_core_socket_crypto.js then threw before defining socket/currentUser, causing later chat modules to fail and leaving rooms, friends, groups, presence, and missed-message panels unpopulated.",
+  "checks": [
+    "python -m compileall -q .",
+    "for f in static/js/chat_parts/*.js static/vendor/socket.io.min.js; do node --check \\\"$f\\\"; done"
+  ],
+  "changed_files": [
+    "VERSION.txt",
+    "static/vendor/socket.io.min.js",
+    "templates/chat.html",
+    "server_init.py",
+    "static/js/chat_parts/0001_core_socket_crypto.js",
+    "docs/ENDUSER_GUI_SOCKETIO_BOOT_FIX_beta434.md",
+    "release_manifest_beta434_enduser_gui_socketio_boot_fix.json"
+  ]
+}

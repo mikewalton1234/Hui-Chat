@@ -154,12 +154,52 @@ def register_main_routes(app, settings, socketio):
         return bool(default)
 
 
+    def _emoticon_catalog_cache_seconds() -> int:
+        try:
+            return max(0, min(31536000, int(settings.get("emoticons_catalog_cache_seconds", 86400) or 0)))
+        except Exception:
+            return 86400
+
+
+    def _safe_emoticon_file_path(root, name: str) -> Path | None:
+        """Return a pathlib Path for safe existing emoticon assets.
+
+        The shared safe_existing_file_under() helper intentionally returns a
+        string because older download routes pass that value straight to
+        send_file().  The emoticon routes need pathlib methods too, so convert
+        the safe result here before checking/serving it.
+        """
+        safe_path = safe_existing_file_under(root, name)
+        if not safe_path:
+            return None
+        candidate = Path(safe_path)
+        return candidate if candidate.is_file() else None
+
+
     @app.get("/api/emoticons/catalog")
     def api_emoticons_catalog():
-        """Return the neutral code-based emoticon catalog for the chat GUI."""
-        payload = emoticon_catalog(settings)
-        resp = jsonify({"success": True, **payload})
-        resp.headers["Cache-Control"] = "no-store, max-age=0"
+        """Return the neutral code-based emoticon catalog for the chat GUI.
+
+        The chat client asks for this URL with the application version in the
+        query string.  Returning cacheable JSON avoids a guaranteed server hit
+        every time a user opens /chat, while the ETag keeps normal reloads
+        safe and cheap if the browser decides to revalidate.
+        """
+        payload = {"success": True, **emoticon_catalog(settings)}
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        etag = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+        cache_seconds = _emoticon_catalog_cache_seconds()
+
+        if request.if_none_match.contains(etag):
+            resp = make_response("", 304)
+        else:
+            resp = make_response(canonical + "\n")
+            resp.mimetype = "application/json"
+        resp.set_etag(etag)
+        if cache_seconds > 0:
+            resp.headers["Cache-Control"] = f"private, max-age={cache_seconds}, stale-while-revalidate={cache_seconds}"
+        else:
+            resp.headers["Cache-Control"] = "no-cache, max-age=0"
         return resp
 
 
@@ -175,8 +215,8 @@ def register_main_routes(app, settings, socketio):
         def _exists(name: str) -> list[str]:
             hits = []
             for root in roots:
-                path = safe_existing_file_under(root, name)
-                if path and path.is_file():
+                path = _safe_emoticon_file_path(root, name)
+                if path:
                     hits.append(str(path))
             return hits
 
@@ -217,11 +257,15 @@ def register_main_routes(app, settings, socketio):
         if ext not in {"gif", "webp", "png", "jpg", "jpeg"}:
             abort(404)
         for root in local_emoticon_roots(settings):
-            path = safe_existing_file_under(root, safe_name)
-            if path and path.is_file():
+            path = _safe_emoticon_file_path(root, safe_name)
+            if path:
                 resp = make_response(send_file(path, mimetype=mimetypes.guess_type(str(path))[0] or "application/octet-stream", conditional=True))
-                resp.headers["Cache-Control"] = "public, max-age=3600"
+                if request.args.get("v"):
+                    resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+                else:
+                    resp.headers["Cache-Control"] = "public, max-age=604800"
                 resp.headers["X-Content-Type-Options"] = "nosniff"
+                resp.headers.setdefault("Cross-Origin-Resource-Policy", "same-origin")
                 return resp
         abort(404)
 
@@ -1891,6 +1935,31 @@ def register_main_routes(app, settings, socketio):
             return None
         return candidate
 
+    def _avatar_fallback_username_from_filename(filename: str) -> str:
+        """Best-effort username for stale /media/avatars/<file> database rows.
+
+        Uploaded avatar filenames are normally <username>-<unix>-<token>.<ext>.
+        If the physical file was deleted or copied without media, returning a
+        generated SVG fallback prevents endless browser 404 spam while still
+        making the missing local media obvious in response headers.
+        """
+        safe_name = secure_filename(filename or "")
+        stem = Path(safe_name or "avatar").stem
+        parts = stem.rsplit('-', 2)
+        if len(parts) == 3 and parts[0]:
+            stem = parts[0]
+        stem = re.sub(r"[^A-Za-z0-9_. -]+", "", stem).strip()
+        return stem[:64] or "user"
+
+    def _missing_avatar_fallback_response(filename: str):
+        username_hint = _avatar_fallback_username_from_filename(filename)
+        svg = _render_avatar_preset_svg("initials", username_hint)
+        resp = app.response_class(svg, mimetype="image/svg+xml")
+        resp.headers["X-EchoChat-Avatar-Fallback"] = "missing-local-avatar"
+        resp.headers["X-EchoChat-Missing-Avatar"] = secure_filename(filename or "")[:160]
+        _apply_avatar_response_headers(resp, cache_seconds=300)
+        return resp
+
 
     def _resolve_banner_path(filename: str):
         safe_name = secure_filename(filename or "")
@@ -3456,19 +3525,19 @@ def register_main_routes(app, settings, socketio):
     def serve_uploaded_avatar(filename: str):
         avatar_path = _resolve_avatar_path(filename)
         if avatar_path is None:
-            return jsonify({"error": "not_found"}), 404
+            return _missing_avatar_fallback_response(filename)
 
         try:
             with open(avatar_path, "rb") as fh:
                 header = fh.read(4096)
         except Exception:
-            return jsonify({"error": "not_found"}), 404
+            return _missing_avatar_fallback_response(filename)
 
         sniffed_ext, sniffed_mime = _sniff_image_type(header)
         if not sniffed_ext or sniffed_ext not in _SAFE_AVATAR_EXTS:
-            return jsonify({"error": "not_found"}), 404
+            return _missing_avatar_fallback_response(filename)
         if sniffed_ext == ".svg" and not allow_svg_avatars:
-            return jsonify({"error": "not_found"}), 404
+            return _missing_avatar_fallback_response(filename)
 
         resp = send_file(
             str(avatar_path),

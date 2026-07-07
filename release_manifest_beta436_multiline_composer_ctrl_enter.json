@@ -1,0 +1,28 @@
+{
+  "version": "v0.11.0-beta.436-multiline-composer-ctrl-enter",
+  "created_at": "2026-07-05T19:05:00Z",
+  "summary": "Add multiline message composing for room chat, private messages, and group messages using Ctrl+Enter while preserving Enter-to-send.",
+  "root_cause": "The rich composer intercepted Enter for send behavior and forwarded Ctrl+Enter to the hidden input, whose Enter handler still sent the message. The composer also advertised single-line behavior and did not provide a controlled newline insertion path.",
+  "fixes": [
+    "Added a shared plain-Enter detection helper so modifier-enter does not send.",
+    "Changed rich composers to aria-multiline=true.",
+    "Ctrl+Enter, Cmd+Enter, and Shift+Enter now insert a real newline into the composer value.",
+    "Room, PM, and group send handlers now only send on unmodified Enter.",
+    "Rich composer BR nodes are translated to newline text for safer paste/browser handling."
+  ],
+  "checks": [
+    "python -m compileall -q .",
+    "node --check static/js/chat_parts/*.js static/js/*.js static/vendor/*.js",
+    "unzip -t package",
+    "sha256sum -c package.sha256"
+  ],
+  "changed_files": [
+    "VERSION.txt",
+    "README.md",
+    "static/js/chat_parts/0008_emoji_picker.js",
+    "static/js/chat_parts/0018_windows_manager.js",
+    "static/js/chat_parts/0040_room_browser_polling_embed.js",
+    "docs/MULTILINE_COMPOSER_CTRL_ENTER_beta436.md",
+    "release_manifest_beta436_multiline_composer_ctrl_enter.json"
+  ]
+}

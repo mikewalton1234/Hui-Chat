@@ -56,8 +56,11 @@ def load_project_dotenv(*, override: bool = False) -> Path | None:
     """Load the first configured/project .env file if it exists.
 
     Existing environment variables win by default so systemd, shell exports, and
-    container secrets remain authoritative.
+    container secrets remain authoritative.  We also record which variables came
+    from the project .env file so interactive terminal-only controls, such as
+    setup UI mode, cannot get stuck forever because of an old persisted .env key.
     """
+    before_keys = set(os.environ.keys())
     for path in _candidate_env_files():
         try:
             if not path.exists() or not path.is_file():
@@ -68,6 +71,10 @@ def load_project_dotenv(*, override: bool = False) -> Path | None:
                 _load_simple_dotenv(path, override=override)
             else:
                 load_dotenv(dotenv_path=path, override=override)
+            loaded_keys = sorted(set(os.environ.keys()) - before_keys)
+            if loaded_keys:
+                os.environ.setdefault("ECHOCHAT_DOTENV_KEYS", ",".join(loaded_keys))
+                os.environ.setdefault("ECHOCHAT_DOTENV_FILE", str(path))
             return path
         except Exception:
             # Startup must never fail only because an optional .env file was

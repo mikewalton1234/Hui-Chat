@@ -1,0 +1,27 @@
+{
+  "version": "0.11.0-beta.443-emoticon-path-type-fix",
+  "base": "0.11.0-beta.442-emoticon-cache-hardening",
+  "summary": "Fixes local emoticon image HTTP 500 crashes caused by calling pathlib methods on string paths returned by the safe-file helper.",
+  "changed_files": [
+    "routes_main.py",
+    "tools/emoticon_catalog_doctor.py",
+    "tools/emoticon_path_type_doctor.py",
+    "docs/EMOTICON_PATH_TYPE_FIX_beta443.md",
+    "README.md",
+    "VERSION.txt",
+    "release_manifest_beta443_emoticon_path_type_fix.json"
+  ],
+  "validation": [
+    "python tools/emoticon_path_type_doctor.py",
+    "python tools/emoticon_cache_hardening_doctor.py",
+    "python tools/emoticon_catalog_doctor.py",
+    "python tools/emoticon_boot_preload_doctor.py",
+    "python tools/pm_typing_hardening_doctor.py",
+    "python -m py_compile routes_main.py security.py",
+    "python -m compileall -q .",
+    "node --check static/js/chat_parts/0008_emoji_picker.js",
+    "node --check on every static/js/chat_parts/*.js",
+    "unzip -t",
+    "sha256sum -c"
+  ]
+}

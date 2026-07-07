@@ -1,0 +1,25 @@
+{
+  "version": "v0.11.0-beta.435-admin-panel-startup-reauth-gate",
+  "created_at": "2026-07-05T18:55:00Z",
+  "summary": "Lock the injected admin panel until the admin confirms the current password at startup; cancel hides the panel and prevents live admin data loads.",
+  "root_cause": "The admin reauth modal protected mutating admin actions, but the injected admin shell still built and started live GET refreshes before startup confirmation. Canceling the modal only dismissed the dialog, leaving the admin workspace visible.",
+  "fixes": [
+    "Added a startup unlock gate around admin panel live data loading.",
+    "Moved initial admin refreshes and polling interval creation behind successful password confirmation.",
+    "Locked the admin panel body visually and functionally until startup reauth succeeds.",
+    "Made cancel hide the panel and leave live data unloaded.",
+    "Guarded manual admin actions so they request startup unlock before running."
+  ],
+  "checks": [
+    "python -m py_compile admin_panel_inject.py",
+    "python -m compileall -q .",
+    "node --check /tmp/ecap_admin.js",
+    "for f in static/js/chat_parts/*.js static/js/*.js static/vendor/*.js /tmp/ecap_admin.js; do node --check \\\"$f\\\"; done"
+  ],
+  "changed_files": [
+    "VERSION.txt",
+    "admin_panel_inject.py",
+    "docs/ADMIN_PANEL_STARTUP_REAUTH_GATE_beta435.md",
+    "release_manifest_beta435_admin_panel_startup_reauth_gate.json"
+  ]
+}

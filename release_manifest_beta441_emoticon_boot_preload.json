@@ -1,0 +1,34 @@
+{
+  "version": "v0.11.0-beta.441-emoticon-boot-preload",
+  "title": "Emoticon boot preload",
+  "based_on": "v0.11.0-beta.440-pm-typing-hardening",
+  "summary": "Loads the classic emoticon catalog at chat-page startup and warms image assets during browser idle time so users do not have to open the emoticon picker before the pack is ready.",
+  "changed_files": [
+    "static/js/chat_parts/0008_emoji_picker.js",
+    "static/js/chat_parts/0048_boot_presence_dom.js",
+    "routes_auth.py",
+    "routes_admin_tools.py",
+    "interactive_setup.py",
+    "server_config.example.json",
+    "settings.example.json",
+    "README.md",
+    "VERSION.txt",
+    "docs/EMOTICON_BOOT_PRELOAD_beta441.md",
+    "tools/emoticon_boot_preload_doctor.py"
+  ],
+  "validation": [
+    "python tools/emoticon_boot_preload_doctor.py",
+    "python tools/emoticon_catalog_doctor.py",
+    "python tools/pm_typing_hardening_doctor.py",
+    "node --check static/js/chat_parts/0008_emoji_picker.js",
+    "node --check static/js/chat_parts/0048_boot_presence_dom.js",
+    "python -m py_compile routes_auth.py routes_admin_tools.py interactive_setup.py",
+    "python -m compileall -q .",
+    "node --check on every static/js/chat_parts/*.js"
+  ],
+  "manual_test": [
+    "Open /chat after login and confirm /api/emoticons/catalog loads during page boot.",
+    "Wait briefly, open the emoticon picker, and confirm the first visible emoticons appear without waiting for a first-click catalog fetch.",
+    "Type a shortcut such as :)) in room chat/PM/group chat and confirm it renders as the image emoticon."
+  ]
+}

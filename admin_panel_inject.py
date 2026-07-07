@@ -74,6 +74,19 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
 /* Hidden (persisted “closed”) state — can be toggled back with a hotkey */
 #ecAdminPanel.ecap-hidden{ display:none !important; }
 
+/* Startup auth gate: until the admin password is confirmed, the panel body is
+   visually locked and non-interactive.  The password modal remains usable. */
+#ecAdminPanel.ecap-startup-locked .ecap-body{
+  pointer-events:none;
+  user-select:none;
+  filter: blur(2px);
+  opacity:.22;
+}
+#ecAdminPanel.ecap-startup-locked .ecap-headBtns .ecap-iconBtn:not(.danger){
+  pointer-events:none;
+  opacity:.45;
+}
+
 #ecAdminPanel *{ box-sizing:border-box; }
 #ecAdminPanel ::selection{ background: rgba(124,179,255,.25); }
 
@@ -880,6 +893,23 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     saveState();
   }
 
+  function setAdminStartupLocked(locked){
+    const p = getPanel();
+    if (!p) return;
+    p.classList.toggle('ecap-startup-locked', !!locked);
+    try{
+      p.setAttribute('aria-busy', locked ? 'true' : 'false');
+      const body = p.querySelector('.ecap-body');
+      if (body) body.setAttribute('aria-hidden', locked ? 'true' : 'false');
+    }catch(_){ }
+  }
+
+  function openAdminPanel(){
+    const p = showPanel({unmini:true});
+    if (!adminStartupUnlocked) requestAdminPanelStartupUnlock();
+    return p;
+  }
+
   function togglePanel(){
     const p = ensurePanel();
     if (!p) return;
@@ -889,6 +919,7 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     if (!nowHidden){
       // Ensure it doesn't look blank when reopening
       showPanel({unmini:true});
+      if (!adminStartupUnlocked) requestAdminPanelStartupUnlock();
     }
   }
 
@@ -896,8 +927,11 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     try{ localStorage.removeItem(STATE_KEY); }catch(_){}
     try{ const p = document.getElementById('ecAdminPanel'); if (p) p.remove(); }catch(_){}
     panelRef = null;
+    adminRuntimeStarted = false;
+    adminStartupUnlocked = false;
     try{ buildPanel(); }catch(e){ console.error(e); }
     showPanel({unmini:true});
+    requestAdminPanelStartupUnlock();
   }
 
   async function openAdminTestLab(){
@@ -952,7 +986,7 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
   }, true);
 
   window.ECAP = window.ECAP || {};
-  window.ECAP.show = ()=>showPanel({unmini:true});
+  window.ECAP.show = openAdminPanel;
   window.ECAP.hide = hidePanel;
   window.ECAP.toggle = togglePanel;
   window.ECAP.reset = resetPanel;
@@ -1059,6 +1093,10 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
 
   async function withAdminAction(btn, key, busyLabel, fn){
     const actionKey = String(key || (btn && btn.id) || 'admin-action');
+    if (!adminStartupUnlocked){
+      const unlocked = await requestAdminPanelStartupUnlock();
+      if (!unlocked) return null;
+    }
     if (ecapPendingActions.has(actionKey)){
       toast('warn', 'Action already running', btn && btn.textContent ? btn.textContent : 'Please wait for the current admin action to finish.');
       return null;
@@ -1089,6 +1127,29 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
   let adminReauthPromise = null;
   let adminReauthStatusPromise = null;
   let adminReauthSessionCache = {key:null, confirmedAt:0, oncePerSession:false};
+
+  // Startup gate: the injected admin shell may exist, but live admin data and
+  // actions must not start until the admin confirms the current password.
+  let adminStartupUnlocked = false;
+  let adminStartupUnlockPromise = null;
+  let adminRuntimeStarted = false;
+  let adminIntervalsStarted = false;
+
+  // Functions such as refreshVoiceSettings() live inside buildPanel() because
+  // they close over DOM nodes created there.  Startup unlock/runtime code lives
+  // outside buildPanel() so hotkey/open/reset flows can reuse it.  Keep a
+  // narrow bridge here so the runtime never calls inner-scope functions by
+  // bare name after the password gate unlocks.
+  const adminRuntimeFns = {
+    refreshVoiceSettings: async ()=>{},
+    refreshIceSettings: async ()=>{},
+    refreshMediaStatus: async ()=>{},
+    refreshStats: async ()=>{},
+    refreshSecurityStatus: async ()=>{},
+    refreshDiagnostics: async ()=>{},
+    refreshAnalytics: async ()=>{},
+    runSearch: async ()=>{}
+  };
 
   function _adminReauthSessionKey(meta){
     try{
@@ -2090,6 +2151,7 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
 
   function buildPanel(){
     const panel = el('div', {id:'ecAdminPanel'});
+    if (!adminStartupUnlocked) panel.classList.add('ecap-startup-locked');
     if (state.max && !state.mini) panel.classList.add('ecap-max');
     if (state.mini) panel.classList.add('ecap-mini');
     if (state.pinned) panel.classList.add('ecap-pinned');
@@ -5337,41 +5399,103 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     const analyticsRefreshBtn = secDash.querySelector('#ecapAnalyticsRefresh');
     if (analyticsRefreshBtn) analyticsRefreshBtn.addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'analytics:refresh', 'Loading', refreshAnalytics));
 
-    refreshVoiceSettings();
-    refreshIceSettings();
-    refreshMediaStatus();
-    refreshStats();
-    refreshSecurityStatus();
-    refreshDiagnostics();
-    refreshAnalytics();
-    function adminRefreshWhenVisible(fn){
-      return ()=>{
-        if (document.hidden) return;
-        try { fn(); } catch(_e) {}
-      };
-    }
-    setInterval(adminRefreshWhenVisible(refreshStats), 60000);
-    setInterval(adminRefreshWhenVisible(refreshMediaStatus), 120000);
-    setInterval(adminRefreshWhenVisible(refreshSecurityStatus), 120000);
-    setInterval(adminRefreshWhenVisible(refreshDiagnostics), 120000);
-    setInterval(adminRefreshWhenVisible(refreshAnalytics), 120000);
-
-    // keep Users tab in sync if dashboard input changes
+    // keep Users tab in sync if dashboard input changes.  This listener is safe
+    // before unlock because it only mirrors local input; it does not fetch data
+    // unless a user value is entered after the panel unlocks.
     const dashTargetInput = secDash.querySelector('#ecapTargetInput');
     dashTargetInput.addEventListener('input', ()=>{
+      if (!adminStartupUnlocked) return;
       const u = (dashTargetInput.value||'').trim();
       if (u) setTargetUser(u, {syncInput:false, loadDetail:false});
     });
 
-    // Initial population
-    runSearch();
+    Object.assign(adminRuntimeFns, {
+      refreshVoiceSettings,
+      refreshIceSettings,
+      refreshMediaStatus,
+      refreshStats,
+      refreshSecurityStatus,
+      refreshDiagnostics,
+      refreshAnalytics,
+      runSearch
+    });
 
-    log('admin panel injected (v8 admin reauth deep recheck)');
-    toast('ok','Admin panel ready', 'Admin reauth deep race guards loaded');
+    log('admin panel shell injected; waiting for startup password confirmation');
+  }
+
+  function adminRefreshWhenVisible(fn){
+    return ()=>{
+      if (document.hidden || !adminStartupUnlocked) return;
+      try { fn(); } catch(_e) {}
+    };
+  }
+
+  function startAdminPanelRuntime(){
+    if (!adminStartupUnlocked || adminRuntimeStarted) return;
+    adminRuntimeStarted = true;
+    setAdminStartupLocked(false);
+    adminRuntimeFns.refreshVoiceSettings();
+    adminRuntimeFns.refreshIceSettings();
+    adminRuntimeFns.refreshMediaStatus();
+    adminRuntimeFns.refreshStats();
+    adminRuntimeFns.refreshSecurityStatus();
+    adminRuntimeFns.refreshDiagnostics();
+    adminRuntimeFns.refreshAnalytics();
+    if (!adminIntervalsStarted){
+      adminIntervalsStarted = true;
+      setInterval(adminRefreshWhenVisible(adminRuntimeFns.refreshStats), 60000);
+      setInterval(adminRefreshWhenVisible(adminRuntimeFns.refreshMediaStatus), 120000);
+      setInterval(adminRefreshWhenVisible(adminRuntimeFns.refreshSecurityStatus), 120000);
+      setInterval(adminRefreshWhenVisible(adminRuntimeFns.refreshDiagnostics), 120000);
+      setInterval(adminRefreshWhenVisible(adminRuntimeFns.refreshAnalytics), 120000);
+    }
+    adminRuntimeFns.runSearch();
+    log('admin panel unlocked; live admin data loaded');
+    toast('ok','Admin panel unlocked', 'Live controls and data are now available');
+  }
+
+  async function requestAdminPanelStartupUnlock(){
+    if (adminStartupUnlocked){
+      startAdminPanelRuntime();
+      return true;
+    }
+    if (adminStartupUnlockPromise) return adminStartupUnlockPromise;
+    adminStartupUnlockPromise = (async ()=>{
+      const panel = showPanel({unmini:true});
+      if (!panel) return false;
+      setAdminStartupLocked(true);
+
+      // If the server says this login session is already freshly confirmed, do
+      // not ask again.  Otherwise, no admin data is loaded until the password
+      // dialog succeeds.
+      let alreadyFresh = false;
+      try{ alreadyFresh = await ensureAdminReauthAlreadyFresh(null); }catch(_){ alreadyFresh = false; }
+      if (!alreadyFresh){
+        const ok = await confirmAdminPassword('Confirm your password before the admin panel loads.');
+        if (!ok){
+          setAdminStartupLocked(false);
+          hidePanel();
+          log('admin panel startup unlock canceled; panel hidden and live data was not loaded');
+          return false;
+        }
+      }
+
+      adminStartupUnlocked = true;
+      startAdminPanelRuntime();
+      return true;
+    })();
+    try{
+      return await adminStartupUnlockPromise;
+    }finally{
+      adminStartupUnlockPromise = null;
+    }
   }
 
   function boot(){
-    try{ buildPanel(); }catch(e){ console.error(e); }
+    try{
+      buildPanel();
+      if (!state.closed) requestAdminPanelStartupUnlock();
+    }catch(e){ console.error(e); }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();

@@ -1,0 +1,22 @@
+{
+  "version": "v0.11.0-beta.437-room-chat-avatar-roster-fix",
+  "based_on": "v0.11.0-beta.436-multiline-composer-ctrl-enter",
+  "created_at": "2026-07-05T19:03:47Z",
+  "summary": "Fix room chat and room users panel profile picture rendering for end users.",
+  "changed_files": [
+    "socket_handlers.py",
+    "realtime/rooms.py",
+    "static/js/chat_parts/0025_dock_identity_friends.js",
+    "static/js/chat_parts/0041_rooms_runtime.js",
+    "static/js/chat_parts/0023_room_reactions.js",
+    "README.md",
+    "VERSION.txt",
+    "docs/ROOM_CHAT_AVATAR_ROSTER_FIX_beta437.md"
+  ],
+  "validation": [
+    "python -m compileall -q .",
+    "node --check static/js/chat_parts/*.js static/js/*.js static/vendor/*.js",
+    "unzip -t package",
+    "sha256sum -c package.sha256"
+  ]
+}

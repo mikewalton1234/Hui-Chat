@@ -1,0 +1,36 @@
+{
+  "version": "v0.11.0-beta.442-emoticon-cache-hardening",
+  "title": "Emoticon cache hardening",
+  "based_on": "v0.11.0-beta.441-emoticon-boot-preload",
+  "summary": "Stops the emoticon catalog and local emoticon image assets from looking like fresh server loads on every chat-page visit by enabling cacheable catalog responses, versioned local image URLs, and long immutable caching for versioned emoticon assets.",
+  "changed_files": [
+    "static/js/chat_parts/0008_emoji_picker.js",
+    "emoticon_catalog.py",
+    "routes_main.py",
+    "routes_admin_tools.py",
+    "interactive_setup.py",
+    "server_init.py",
+    "server_config.example.json",
+    "settings.example.json",
+    "README.md",
+    "VERSION.txt",
+    "docs/EMOTICON_CACHE_HARDENING_beta442.md",
+    "tools/emoticon_cache_hardening_doctor.py",
+    "tools/emoticon_boot_preload_doctor.py"
+  ],
+  "validation": [
+    "python tools/emoticon_cache_hardening_doctor.py",
+    "python tools/emoticon_boot_preload_doctor.py",
+    "python tools/emoticon_catalog_doctor.py",
+    "python tools/pm_typing_hardening_doctor.py",
+    "node --check static/js/chat_parts/0008_emoji_picker.js",
+    "python -m py_compile routes_main.py routes_admin_tools.py interactive_setup.py emoticon_catalog.py server_init.py",
+    "python -m compileall -q .",
+    "node --check on every static/js/chat_parts/*.js"
+  ],
+  "manual_test": [
+    "Open /chat once and confirm /api/emoticons/catalog and /emoticons/*.gif load normally.",
+    "Reload /chat normally and confirm catalog/images show from browser memory/disk cache instead of new server transfers.",
+    "Do not test with DevTools Disable cache enabled because that intentionally bypasses browser caching."
+  ]
+}

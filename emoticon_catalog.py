@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
+from urllib.parse import quote
 from typing import Any
 from urllib.parse import urlparse
 
@@ -107,6 +108,39 @@ def local_emoticon_roots(settings: dict[str, Any] | None = None) -> list[Path]:
     return out
 
 
+
+def _file_cache_token(path: Path | None) -> str:
+    """Return a compact cache-busting token for a local immutable asset URL."""
+    if not path:
+        return ""
+    try:
+        stat = path.stat()
+        return f"{int(stat.st_mtime_ns):x}-{int(stat.st_size):x}"
+    except Exception:
+        return ""
+
+
+def _versioned_local_emoticon_url(filename: str, path: Path | None = None) -> str:
+    """Build a safe /emoticons URL with a content-derived version token."""
+    safe = str(filename or "").strip().replace("\\", "/")
+    if "/" in safe or safe.startswith(".") or not _SAFE_FILENAME_RE.match(safe):
+        safe = "emoticon.gif"
+    url = f"/emoticons/{quote(safe)}"
+    token = _file_cache_token(path)
+    return f"{url}?v={quote(token)}" if token else url
+
+
+def _versioned_static_emoticon_url(filename: str) -> str:
+    """Build a /static/emoticons fallback URL with a local file version token when possible."""
+    safe = str(filename or "").strip().replace("\\", "/")
+    if "/" in safe or safe.startswith(".") or not _SAFE_FILENAME_RE.match(safe):
+        return ""
+    candidate = project_root() / "static" / "emoticons" / safe
+    token = _file_cache_token(candidate if candidate.is_file() else None)
+    url = f"/static/emoticons/{quote(safe)}"
+    return f"{url}?v={quote(token)}" if token else url
+
+
 def _normalize_external_bases(raw: Any) -> list[str]:
     """Normalize an external image base URL and include repo-folder fallbacks.
 
@@ -182,9 +216,12 @@ def _local_asset_for_row(roots: list[Path], row: dict[str, Any]) -> tuple[str, b
             if candidate and candidate.is_file():
                 # Always serve through the safe /emoticons route.  That route
                 # searches the same roots and prevents leaking arbitrary files.
-                return f"/emoticons/{filename}", True, filename.rsplit(".", 1)[-1].lower()
+                # The ?v= token is derived from the file timestamp/size so the
+                # browser can keep the image cache hot across chat reconnects
+                # while still refreshing when the local file is replaced.
+                return _versioned_local_emoticon_url(filename, candidate), True, filename.rsplit(".", 1)[-1].lower()
     fallback = candidates[0] if candidates else f"{row.get('name') or 'emoticon'}.gif"
-    return f"/emoticons/{fallback}", False, fallback.rsplit(".", 1)[-1].lower() if "." in fallback else "gif"
+    return _versioned_local_emoticon_url(fallback), False, fallback.rsplit(".", 1)[-1].lower() if "." in fallback else "gif"
 
 
 def _external_asset_candidates_for_row(bases: str | list[str], row: dict[str, Any]) -> list[str]:
@@ -322,7 +359,7 @@ def emoticon_catalog(settings: dict[str, Any] | None = None) -> dict[str, Any]:
             src = custom_url
             source_mode = "custom_url"
         fallback_srcs: list[str] = []
-        static_candidates = [f"/static/emoticons/{name}" for name in _candidate_local_files(row)]
+        static_candidates = [_versioned_static_emoticon_url(name) for name in _candidate_local_files(row)]
         for candidate in [local_src, *static_candidates, custom_url, *external_candidates]:
             if candidate and candidate not in fallback_srcs:
                 fallback_srcs.append(candidate)
