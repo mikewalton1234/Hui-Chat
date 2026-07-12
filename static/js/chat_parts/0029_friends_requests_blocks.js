@@ -261,7 +261,7 @@ async function ecLoadFriendsViaHttpFallback(reason = '') {
     try { socket.emit("get_friend_presence"); } catch (_) {}
     return true;
   } catch (e) {
-    try { console.warn('[Echo-Chat] friends HTTP fallback failed', reason, e); } catch {}
+    try { console.warn('[Hui Chat] friends HTTP fallback failed', reason, e); } catch {}
   }
   return false;
 }
@@ -309,6 +309,7 @@ let EC_FRIEND_GROUP_CTX_MENU = null;
 let EC_ACTIVE_FRIEND_DRAG = null;
 const EC_PENDING_FRIEND_ACTIONS = new Set();
 let EC_FRIENDS_RENDER_REFRESH_TIMER = null;
+let EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL = 0;
 
 function getFriendGroupStorageKey() {
   return `friendGroups_${String(currentUser || 'guest')}`;
@@ -339,7 +340,7 @@ function ecDumpFriendsPresenceState() {
   }));
   const out = { friends, presence, dom };
   try { console.table(presence.map((row) => ({ friend: row.friend, online: !!row.presence?.online, presence: row.presence?.presence || 'missing' }))); } catch (_) {}
-  console.log('[Echo-Chat] friends presence state', out);
+  console.log('[Hui Chat] friends presence state', out);
   return out;
 }
 window.ecDumpFriendsPresenceState = ecDumpFriendsPresenceState;
@@ -522,7 +523,114 @@ function clearFriendDragArmedFlags() {
 }
 
 function clearFriendGroupDragOver() {
-  document.querySelectorAll('.friendGroupHeader.dragOver, .friendGroupEmpty.dragOver').forEach((el) => el.classList.remove('dragOver'));
+  document.querySelectorAll('.friendGroupHeader.dragOver, .friendGroupEmpty.dragOver, .friendItem.dragOver').forEach((el) => el.classList.remove('dragOver'));
+}
+
+function getFriendDropTargetFromPoint(x, y) {
+  let el = null;
+  try { el = document.elementFromPoint(Number(x || 0), Number(y || 0)); } catch (_) { el = null; }
+  return el?.closest?.('[data-friend-drop-key]') || null;
+}
+
+function setFriendDropHoverTarget(target) {
+  clearFriendGroupDragOver();
+  if (target && target.classList) target.classList.add('dragOver');
+}
+
+function moveFriendDragPayloadToGroup(payload, groupKey, opts = {}) {
+  if (!payload || payload.kind !== 'friend') return false;
+  const targetKey = String(groupKey || FRIEND_GROUP_DEFAULT_KEY);
+  if (payload.sourceGroupKey === targetKey) return false;
+  const storedGroup = friendGroupStoredNameFromKey(targetKey);
+  assignFriendToGroup(payload.friend, storedGroup);
+  if (targetKey) setFriendCollapsed(targetKey, false);
+  updateFriendsListUI(UIState.friendsListCache);
+  if (!opts.silent) {
+    toast(`📁 Moved ${payload.friend} to ${targetKey === FRIEND_GROUP_DEFAULT_KEY ? FRIEND_GROUP_DEFAULT_LABEL : targetKey}`, 'ok');
+  }
+  return true;
+}
+
+let EC_FRIEND_POINTER_DRAG = null;
+let EC_FRIEND_POINTER_DRAG_GHOST = null;
+
+function removeFriendPointerDragGhost() {
+  try { EC_FRIEND_POINTER_DRAG_GHOST?.remove?.(); } catch (_) {}
+  EC_FRIEND_POINTER_DRAG_GHOST = null;
+}
+
+function updateFriendPointerDragGhost(x, y, label = '') {
+  if (!EC_FRIEND_POINTER_DRAG_GHOST) {
+    const ghost = document.createElement('div');
+    ghost.className = 'friendDragGhost';
+    ghost.setAttribute('aria-hidden', 'true');
+    (document.body || document.documentElement).appendChild(ghost);
+    EC_FRIEND_POINTER_DRAG_GHOST = ghost;
+  }
+  EC_FRIEND_POINTER_DRAG_GHOST.textContent = label ? `Move ${label}` : 'Move friend';
+  EC_FRIEND_POINTER_DRAG_GHOST.style.left = `${Math.round(Number(x || 0) + 12)}px`;
+  EC_FRIEND_POINTER_DRAG_GHOST.style.top = `${Math.round(Number(y || 0) + 12)}px`;
+}
+
+function finishFriendPointerDrag(ev, cancelled = false) {
+  const state = EC_FRIEND_POINTER_DRAG;
+  if (!state) return;
+  EC_FRIEND_POINTER_DRAG = null;
+  const wasActive = !!state.active;
+  const payload = EC_ACTIVE_FRIEND_DRAG;
+  try { state.sourceEl?.releasePointerCapture?.(state.pointerId); } catch (_) {}
+  try { state.sourceEl?.classList?.remove('dragging'); } catch (_) {}
+  removeFriendPointerDragGhost();
+  if (wasActive) {
+    EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL = Date.now() + 500;
+    if (!cancelled && payload && ev) {
+      const target = getFriendDropTargetFromPoint(ev.clientX, ev.clientY);
+      const targetKey = String(target?.dataset?.friendDropKey || '');
+      if (targetKey) moveFriendDragPayloadToGroup(payload, targetKey);
+    }
+  }
+  EC_ACTIVE_FRIEND_DRAG = null;
+  clearFriendGroupDragOver();
+}
+
+function bindFriendPointerDrag(li, friend, groupKey) {
+  if (!li || li.dataset.friendPointerDragBound === '1') return;
+  li.dataset.friendPointerDragBound = '1';
+
+  li.addEventListener('pointerdown', (ev) => {
+    if (ev.button !== 0) return;
+    if (ev.target?.closest?.('button, a, input, textarea, select, .liActions')) return;
+    EC_FRIEND_POINTER_DRAG = {
+      friend,
+      sourceGroupKey: groupKey,
+      pointerId: ev.pointerId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+      sourceEl: li,
+      active: false,
+    };
+    try { li.setPointerCapture?.(ev.pointerId); } catch (_) {}
+  });
+
+  li.addEventListener('pointermove', (ev) => {
+    const state = EC_FRIEND_POINTER_DRAG;
+    if (!state || state.sourceEl !== li || state.pointerId !== ev.pointerId) return;
+    const dx = Number(ev.clientX || 0) - Number(state.startX || 0);
+    const dy = Number(ev.clientY || 0) - Number(state.startY || 0);
+    const moved = Math.hypot(dx, dy);
+    if (!state.active && moved < 6) return;
+    try { ev.preventDefault(); } catch (_) {}
+    if (!state.active) {
+      state.active = true;
+      EC_ACTIVE_FRIEND_DRAG = { kind: 'friend', friend, sourceGroupKey: groupKey };
+      li.classList.add('dragging');
+    }
+    updateFriendPointerDragGhost(ev.clientX, ev.clientY, friend);
+    setFriendDropHoverTarget(getFriendDropTargetFromPoint(ev.clientX, ev.clientY));
+  });
+
+  li.addEventListener('pointerup', (ev) => finishFriendPointerDrag(ev, false));
+  li.addEventListener('pointercancel', (ev) => finishFriendPointerDrag(ev, true));
 }
 
 function reorderFriendGroup(sourceKey, targetKey) {
@@ -547,12 +655,17 @@ function reorderFriendGroup(sourceKey, targetKey) {
 function bindFriendGroupDropTarget(el, groupKey) {
   if (!el || el.dataset.friendDropBound === '1') return;
   el.dataset.friendDropBound = '1';
+  el.dataset.friendDropKey = groupKey;
 
-  el.addEventListener('dragover', (ev) => {
+  const markOver = (ev) => {
     if (!EC_ACTIVE_FRIEND_DRAG) return;
     ev.preventDefault();
+    if (ev.dataTransfer) ev.dataTransfer.dropEffect = 'move';
     el.classList.add('dragOver');
-  });
+  };
+
+  el.addEventListener('dragenter', markOver);
+  el.addEventListener('dragover', markOver);
 
   el.addEventListener('dragleave', (ev) => {
     const rel = ev.relatedTarget;
@@ -563,12 +676,12 @@ function bindFriendGroupDropTarget(el, groupKey) {
   el.addEventListener('drop', (ev) => {
     if (!EC_ACTIVE_FRIEND_DRAG) return;
     ev.preventDefault();
+    ev.stopPropagation();
     el.classList.remove('dragOver');
     const payload = EC_ACTIVE_FRIEND_DRAG;
+    EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL = Date.now() + 450;
     if (payload.kind === 'friend') {
-      assignFriendToGroup(payload.friend, friendGroupStoredNameFromKey(groupKey));
-      updateFriendsListUI(UIState.friendsListCache);
-      toast(`📁 Moved ${payload.friend} to ${groupKey === FRIEND_GROUP_DEFAULT_KEY ? FRIEND_GROUP_DEFAULT_LABEL : groupKey}`, 'ok');
+      moveFriendDragPayloadToGroup(payload, groupKey);
       return;
     }
     if (payload.kind === 'group' && payload.groupKey !== groupKey && reorderFriendGroup(payload.groupKey, groupKey)) {
@@ -613,8 +726,8 @@ function createFriendListItem(friend, groupKey) {
   const dragBtn = document.createElement('button');
   dragBtn.className = 'iconBtn friendDragHandle';
   dragBtn.type = 'button';
-  dragBtn.title = 'Drag to move friend';
-  dragBtn.setAttribute('aria-label', 'Drag to move friend');
+  dragBtn.title = 'Drag friend to another category';
+  dragBtn.setAttribute('aria-label', 'Drag friend to another category');
   dragBtn.textContent = '⋮⋮';
   dragBtn.draggable = false;
   dragBtn.addEventListener('mousedown', (ev) => { ev.stopPropagation(); li.dataset.dragArmed = '1'; });
@@ -641,18 +754,37 @@ function createFriendListItem(friend, groupKey) {
 
   li.appendChild(left);
   li.appendChild(actions);
-  li.onclick = () => {
+  li.title = li.title ? `${li.title}
+Drag this row to another friend category.` : 'Drag this row to another friend category.';
+  li.querySelectorAll('img').forEach((img) => { img.draggable = false; });
+  bindFriendPointerDrag(li, friend, groupKey);
+  li.onclick = (ev) => {
+    if (Date.now() < EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL) {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch {}
+      return;
+    }
     selectBuddyRow(friend, 'friends', li);
     openPrivateChat(friend);
   };
-  li.ondblclick = () => openPrivateChat(friend);
+  li.ondblclick = (ev) => {
+    if (Date.now() < EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL) {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch {}
+      return;
+    }
+    openPrivateChat(friend);
+  };
   li.oncontextmenu = (ev) => {
     selectBuddyRow(friend, 'friends', li);
     showUserContextMenu(ev, friend, { source: 'friends' });
   };
 
   li.addEventListener('dragstart', (ev) => {
-    if (li.dataset.dragArmed !== '1') {
+    if (EC_FRIEND_POINTER_DRAG && EC_FRIEND_POINTER_DRAG.sourceEl === li && !li.dataset.dragArmed) {
+      ev.preventDefault();
+      return;
+    }
+    const actionTarget = ev.target?.closest?.('button, a, input, textarea, select, .liActions');
+    if (actionTarget && li.dataset.dragArmed !== '1') {
       ev.preventDefault();
       return;
     }
@@ -660,6 +792,7 @@ function createFriendListItem(friend, groupKey) {
     li.classList.add('dragging');
     if (ev.dataTransfer) {
       ev.dataTransfer.effectAllowed = 'move';
+      try { ev.dataTransfer.setData('application/x-hui-friend', JSON.stringify(EC_ACTIVE_FRIEND_DRAG)); } catch {}
       try { ev.dataTransfer.setData('text/plain', friend); } catch {}
     }
   });
@@ -668,9 +801,11 @@ function createFriendListItem(friend, groupKey) {
     delete li.dataset.dragArmed;
     li.classList.remove('dragging');
     EC_ACTIVE_FRIEND_DRAG = null;
+    EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL = Date.now() + 300;
     clearFriendGroupDragOver();
   });
 
+  bindFriendGroupDropTarget(li, groupKey);
   return li;
 }
 
@@ -726,6 +861,10 @@ function createFriendGroupHeader(meta) {
   header.appendChild(actions);
 
   header.addEventListener('click', (ev) => {
+    if (Date.now() < EC_FRIEND_DRAG_SUPPRESS_CLICK_UNTIL) {
+      try { ev.preventDefault(); ev.stopPropagation(); } catch (_) {}
+      return;
+    }
     if (ev.target?.closest?.('.friendGroupDragHandle')) return;
     const nowCollapsed = !getFriendGroupingState().collapsed[meta.key];
     setFriendCollapsed(meta.key, nowCollapsed);

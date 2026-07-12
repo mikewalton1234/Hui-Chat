@@ -34,7 +34,7 @@
   }
 
   function ecTextAnimationClassForContext(context) {
-    const cfg = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === 'object') ? window.ECHOCHAT_CFG : {};
+    const cfg = (window.HUI_CFG && typeof window.HUI_CFG === 'object') ? window.HUI_CFG : {};
     const ctx = String(context || 'generic').trim().toLowerCase();
     const mode = ctx === 'room'
       ? ecNormalizeTextAnimationMode(cfg.chat_text_animation, 'none')

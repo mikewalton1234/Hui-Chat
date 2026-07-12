@@ -47,7 +47,7 @@ function pemToArrayBuffer(pemText) {
 
 async function importMyPrivateKey(encryptedPrivStr, password) {
   // Supports:
-  //  - v2:<salt_b64>:<nonce_b64>:<cipher_b64> (PBKDF2->AES-256-GCM, AAD "echochat:keyblob:v2")
+  //  - v2:<salt_b64>:<nonce_b64>:<cipher_b64> (PBKDF2->AES-256-GCM, AAD "hui:keyblob:v2")
   //  - legacy: <salt_b64>:<cipher_b64> (PBKDF2->XOR)
   if (!encryptedPrivStr || typeof encryptedPrivStr !== "string") {
     throw new Error("No encrypted private key available.");
@@ -97,7 +97,7 @@ async function importMyPrivateKey(encryptedPrivStr, password) {
       ["decrypt"]
     );
 
-    const aad = enc.encode("echochat:keyblob:v2");
+    const aad = enc.encode("hui:keyblob:v2");
     const plainBuf = await crypto.subtle.decrypt(
       { name: "AES-GCM", iv: nonce, additionalData: aad, tagLength: 128 },
       aesKey,
@@ -176,7 +176,7 @@ function ecDmPasswordScopeUser(username = null) {
 
 function getDmPasswordStorageKey(username = null) {
   const token = ecDmPasswordScopeUser(username);
-  return token ? `echochat_dm_pwd_v2:${token}` : '';
+  return token ? `hui_dm_pwd_v2:${token}` : '';
 }
 
 function clearStoredDmPasswordForCurrentUser() {
@@ -188,8 +188,8 @@ function clearStoredDmPasswordForCurrentUser() {
     }
     // beta.265-and-earlier global keys are deliberately cleared so the next
     // account opened in this tab cannot reuse the wrong password.
-    sessionStorage.removeItem("echochat_dm_pwd");
-    sessionStorage.removeItem("echochat_dm_pwd_set_at");
+    sessionStorage.removeItem("hui_dm_pwd");
+    sessionStorage.removeItem("hui_dm_pwd_set_at");
   } catch (_e) {}
 }
 
@@ -211,10 +211,10 @@ function getStoredDmPassword() {
     // Legacy fallback: only trust the old global password when the login page
     // also recorded the matching account token. This keeps old stale tab state
     // from trying to unlock a different user's private key.
-    const legacyUser = String(sessionStorage.getItem("echochat_dm_pwd_user") || '').trim().toLowerCase();
+    const legacyUser = String(sessionStorage.getItem("hui_dm_pwd_user") || '').trim().toLowerCase();
     if (token && legacyUser && legacyUser === token) {
-      const legacyPwd = sessionStorage.getItem("echochat_dm_pwd") || "";
-      const legacySetAt = Number(sessionStorage.getItem("echochat_dm_pwd_set_at") || 0) || 0;
+      const legacyPwd = sessionStorage.getItem("hui_dm_pwd") || "";
+      const legacySetAt = Number(sessionStorage.getItem("hui_dm_pwd_set_at") || 0) || 0;
       if (legacyPwd && (!legacySetAt || (Date.now() - legacySetAt) <= maxAgeMs)) return legacyPwd;
     }
     return "";

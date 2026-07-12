@@ -22,7 +22,7 @@ from sensitive_fields_crypto import encrypt_sensitive_field
 from email_at_rest import hash_email, prepare_email_storage
 from account_status import account_status_allows_auth, get_effective_account_status
 
-_E2EE_KEYBLOB_AAD = b"echochat:keyblob:v2"
+_E2EE_KEYBLOB_AAD = b"hui:keyblob:v2"
 
 def _pbkdf2_key(password: str, salt: bytes, iterations: int = 390_000, length: int = 32) -> bytes:
     """PBKDF2-HMAC-SHA256 key derivation (used for client-compatible key wrapping)."""

@@ -28,6 +28,9 @@ function voiceSetBtnBusy(btn, busy, label) {
   if (!btn) return;
   if (busy) {
     if (!btn.dataset.ecVoiceBusyOriginalText) btn.dataset.ecVoiceBusyOriginalText = btn.textContent || "";
+    if (btn.dataset.ecVoiceBusyOriginalDisabled === undefined) {
+      btn.dataset.ecVoiceBusyOriginalDisabled = btn.disabled ? "1" : "0";
+    }
     if (label) btn.textContent = label;
     btn.classList.add("isBusy");
     btn.setAttribute("aria-busy", "true");
@@ -35,8 +38,12 @@ function voiceSetBtnBusy(btn, busy, label) {
   } else {
     btn.classList.remove("isBusy");
     btn.removeAttribute("aria-busy");
+    if (btn.dataset.ecVoiceBusyOriginalDisabled !== undefined) {
+      btn.disabled = btn.dataset.ecVoiceBusyOriginalDisabled === "1";
+    }
     if (btn.dataset.ecVoiceBusyOriginalText && !label) btn.textContent = btn.dataset.ecVoiceBusyOriginalText;
     delete btn.dataset.ecVoiceBusyOriginalText;
+    delete btn.dataset.ecVoiceBusyOriginalDisabled;
   }
 }
 
@@ -45,7 +52,7 @@ function voiceRefreshBusyUi() {
     const room = String(UIState.currentRoom || UIState.roomEmbedRoom || "");
     const roomVoiceBusy = voiceActionBusy("room", room) || voiceActionBusy("room-voice", room);
     voiceSetBtnBusy($("btnRoomEmbedVoice"), roomVoiceBusy, "🎤 Voice…");
-    const camBusy = (typeof echoMediaIsBusy === "function") && echoMediaIsBusy("cam", room);
+    const camBusy = (typeof huiMediaIsBusy === "function") && huiMediaIsBusy("cam", room);
     voiceSetBtnBusy($("btnRoomEmbedCam"), !!camBusy, "📷 Webcam…");
   } catch {}
   try {
@@ -244,12 +251,12 @@ function voiceTalkUp(ev) {
 }
 
 function voiceWireTalkButton(button, checkbox) {
-  if (!button || button._echoVoiceTalkWired) {
-    if (checkbox && !checkbox._echoVoiceHandsFreeWired) voiceWireHandsFreeCheckbox(checkbox);
+  if (!button || button._huiVoiceTalkWired) {
+    if (checkbox && !checkbox._huiVoiceHandsFreeWired) voiceWireHandsFreeCheckbox(checkbox);
     voiceRefreshTalkControls();
     return;
   }
-  button._echoVoiceTalkWired = true;
+  button._huiVoiceTalkWired = true;
   button.type = "button";
   button.addEventListener("pointerdown", voiceTalkDown);
   button.addEventListener("pointerup", voiceTalkUp);
@@ -267,8 +274,8 @@ function voiceWireTalkButton(button, checkbox) {
 }
 
 function voiceWireHandsFreeCheckbox(checkbox) {
-  if (!checkbox || checkbox._echoVoiceHandsFreeWired) return;
-  checkbox._echoVoiceHandsFreeWired = true;
+  if (!checkbox || checkbox._huiVoiceHandsFreeWired) return;
+  checkbox._huiVoiceHandsFreeWired = true;
   checkbox.checked = voiceGetHandsFree();
   checkbox.addEventListener("change", () => voiceSetHandsFree(!!checkbox.checked));
 }
@@ -365,7 +372,7 @@ function voiceStatusForUser(username, room = UIState.currentRoom) {
       if (VOICE_STATE.room.joined && VOICE_STATE.room.name === room && !VOICE_STATE.room.viewerOnly) status.voice_on = true;
       if (ecMediaModeReady()) {
         const media = ecMediaStateSnapshot();
-        if (String(media.echoRoom || "") === String(room || "")) {
+        if (String(media.huiRoom || "") === String(room || "")) {
           if (media.micEnabled || media.voiceDesired) status.voice_on = true;
           if (media.camEnabled || media.camDesired) status.webcam_on = true;
         }
@@ -427,7 +434,7 @@ function voicePublishLocalMediaStatus(room = UIState.currentRoom, patch = {}) {
   try {
     if (ecMediaModeReady()) {
       const media = ecMediaStateSnapshot();
-      if (String(media.echoRoom || "") === room) {
+      if (String(media.huiRoom || "") === room) {
         if (!Object.prototype.hasOwnProperty.call(patch, "voice_on")) status.voice_on = !!(media.micEnabled || media.voiceDesired);
         if (!Object.prototype.hasOwnProperty.call(patch, "webcam_on")) status.webcam_on = !!(media.camEnabled || media.camDesired);
       }
@@ -513,15 +520,15 @@ function voicePeerConnectionClosed(pc) {
 
 async function voiceTryIceRestart(pc) {
   if (!pc || voicePeerConnectionClosed(pc)) return false;
-  if (pc._echoIceRestarting) return true;
-  const attempts = Number(pc._echoIceRestartAttempts || 0);
+  if (pc._huiIceRestarting) return true;
+  const attempts = Number(pc._huiIceRestartAttempts || 0);
   if (attempts >= VOICE_ICE_RESTART_MAX_ATTEMPTS) return false;
-  pc._echoIceRestartAttempts = attempts + 1;
-  pc._echoIceRestarting = true;
+  pc._huiIceRestartAttempts = attempts + 1;
+  pc._huiIceRestarting = true;
   try {
     if (typeof pc.restartIce === "function") pc.restartIce();
-    if (typeof pc._echoIceRestartOffer === "function") {
-      const ok = await pc._echoIceRestartOffer();
+    if (typeof pc._huiIceRestartOffer === "function") {
+      const ok = await pc._huiIceRestartOffer();
       return ok !== false;
     }
     return true;
@@ -529,7 +536,7 @@ async function voiceTryIceRestart(pc) {
     try { console.warn("ICE restart failed", err); } catch {}
     return false;
   } finally {
-    setTimeout(() => { try { pc._echoIceRestarting = false; } catch {} }, 1200);
+    setTimeout(() => { try { pc._huiIceRestarting = false; } catch {} }, 1200);
   }
 }
 
@@ -540,8 +547,8 @@ function voiceMakePc() {
     rtcpMuxPolicy: "require",
     iceCandidatePoolSize: 2,
   });
-  pc._echoIceRestartAttempts = 0;
-  pc._echoIceRestarting = false;
+  pc._huiIceRestartAttempts = 0;
+  pc._huiIceRestarting = false;
   // Best-effort resilience: try ICE restart on failure. Use additive listeners
   // so DM/room-specific handlers do not overwrite the restart safety net.
   let restartTimer = null;
@@ -556,13 +563,13 @@ function voiceMakePc() {
   };
   pc.addEventListener("iceconnectionstatechange", () => {
     try {
-      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") pc._echoIceRestartAttempts = 0;
+      if (pc.iceConnectionState === "connected" || pc.iceConnectionState === "completed") pc._huiIceRestartAttempts = 0;
       if (pc.iceConnectionState === "failed") scheduleRestart();
     } catch {}
   });
   pc.addEventListener("connectionstatechange", () => {
     try {
-      if (pc.connectionState === "connected") pc._echoIceRestartAttempts = 0;
+      if (pc.connectionState === "connected") pc._huiIceRestartAttempts = 0;
       if (pc.connectionState === "failed") scheduleRestart();
     } catch {}
   });

@@ -568,9 +568,9 @@ function ecRoomEnsureAckVisible(room, plaintext, ack, opts = {}) {
           expires_at: ack.expires_at,
           client_echo_fallback: true,
         });
-        try { console.info('[Echo-Chat] room message rendered from ACK fallback after broadcast was not visible', { room: cleanRoom, message_id: messageId }); } catch {}
+        try { console.info('[Hui Chat] room message rendered from ACK fallback after broadcast was not visible', { room: cleanRoom, message_id: messageId }); } catch {}
       } catch (e) {
-        try { console.warn('[Echo-Chat] room ACK fallback render failed', e); } catch {}
+        try { console.warn('[Hui Chat] room ACK fallback render failed', e); } catch {}
       }
     }, delayMs);
   } catch {}

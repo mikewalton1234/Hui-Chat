@@ -4,19 +4,19 @@ async function restoreLastRoomAndVoice() {
   try {
     let lastRoom = "";
     try {
-      lastRoom = String(UIState?.currentRoom || sessionStorage.getItem("echochat_last_room") || "").trim();
+      lastRoom = String(UIState?.currentRoom || sessionStorage.getItem("hui_last_room") || "").trim();
     } catch (e) {
       lastRoom = String(UIState?.currentRoom || "").trim();
     }
 
     const voiceWanted = (() => {
       // Only restore microphone voice when the user explicitly enabled Voice.
-      // Webcam-only joins may still store echochat_voice_room for signaling, but
+      // Webcam-only joins may still store hui_voice_room for signaling, but
       // must not restore as voice after a reconnect.
-      try { return sessionStorage.getItem("echochat_voice_desired") === "1"; } catch (e) { return false; }
+      try { return sessionStorage.getItem("hui_voice_desired") === "1"; } catch (e) { return false; }
     })();
     const voiceRoom = (() => {
-      try { return String(sessionStorage.getItem("echochat_voice_room") || "").trim(); } catch (e) { return ""; }
+      try { return String(sessionStorage.getItem("hui_voice_room") || "").trim(); } catch (e) { return ""; }
     })();
 
     if (!lastRoom) return;
@@ -24,7 +24,7 @@ async function restoreLastRoomAndVoice() {
     const res = await joinRoom(lastRoom, { silent: true, restore: true });
     const restoredRoom = String(res?.room || lastRoom || "").trim();
     if (res?.success && restoredRoom && restoredRoom !== lastRoom) {
-      try { sessionStorage.setItem("echochat_last_room", restoredRoom); } catch (e) {}
+      try { sessionStorage.setItem("hui_last_room", restoredRoom); } catch (e) {}
     }
     if (res?.success && restoredRoom && ecMediaModeReady()) {
       try { await ecMediaSwitchRoomIfDesired(restoredRoom); } catch (e) {}
@@ -50,8 +50,8 @@ function ecLiveDataBootstrapRescue(reason = '') {
   // where the socket connects but an early event/ack is dropped, leaving Rooms,
   // Friends, Groups, and invite panels empty until a manual refresh.
   window.setTimeout(() => {
-    try { getRooms({ timeoutMs: 7000, reason: reason || 'bootstrap_rescue' }); } catch (e) { try { console.warn('[Echo-Chat] rescue getRooms failed', e); } catch {} }
-    try { getFriends({ timeoutMs: 7000, reason: reason || 'bootstrap_rescue' }); } catch (e) { try { console.warn('[Echo-Chat] rescue getFriends failed', e); } catch {} }
+    try { getRooms({ timeoutMs: 7000, reason: reason || 'bootstrap_rescue' }); } catch (e) { try { console.warn('[Hui Chat] rescue getRooms failed', e); } catch {} }
+    try { getFriends({ timeoutMs: 7000, reason: reason || 'bootstrap_rescue' }); } catch (e) { try { console.warn('[Hui Chat] rescue getFriends failed', e); } catch {} }
     try { getPendingFriendRequests(); } catch (_) {}
     try { getBlockedUsers(); } catch (_) {}
     try { refreshMyGroups(); } catch (_) {}
@@ -126,8 +126,8 @@ socket.on("connect", () => {
   // the old room while the server had no live Socket.IO room membership, which
   // made the users panel say "No users" even though the user was looking at the room.
   try {
-    const lastRoom = String(sessionStorage.getItem("echochat_last_room") || "").trim();
-    const lastAt = Number(sessionStorage.getItem("echochat_last_room_set_at") || 0) || 0;
+    const lastRoom = String(sessionStorage.getItem("hui_last_room") || "").trim();
+    const lastAt = Number(sessionStorage.getItem("hui_last_room_set_at") || 0) || 0;
     const isRecent = !lastAt || (Date.now() - lastAt) < 24 * 60 * 60 * 1000;
     if ((!first || (!UIState.currentRoom && lastRoom && isRecent))) restoreLastRoomAndVoice();
   } catch (e) {

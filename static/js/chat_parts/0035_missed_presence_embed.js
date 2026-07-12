@@ -29,11 +29,11 @@ function ecMissedDebug(stage, detail = {}) {
       detail,
       state: (typeof ecDumpMissedPmDebugState === "function") ? ecDumpMissedPmDebugState({ silent: true }) : null,
     };
-    console.groupCollapsed(`[Echo-Chat missed PM] ${stage}`);
+    console.groupCollapsed(`[Hui Chat missed PM] ${stage}`);
     console.log(payload);
     console.groupEnd();
   } catch (err) {
-    try { console.debug("[Echo-Chat missed PM]", stage, detail, err); } catch {}
+    try { console.debug("[Hui Chat missed PM]", stage, detail, err); } catch {}
   }
 }
 
@@ -97,7 +97,7 @@ function ecDumpMissedPmDebugState(opts = {}) {
     bubble: ecGetMissedBubbleVisualState(),
   };
   if (!opts.silent) {
-    try { console.log("[Echo-Chat missed PM debug state]", snapshot); } catch {}
+    try { console.log("[Hui Chat missed PM debug state]", snapshot); } catch {}
   }
   return snapshot;
 }
@@ -107,7 +107,7 @@ function ecEnableMissedPmDebug(enabled = true) {
   try { window.EC_DEBUG_MISSED_MESSAGES = on; } catch {}
   try { localStorage.setItem(EC_MISSED_PM_DEBUG_STORAGE_KEY, on ? "1" : "0"); } catch {}
   try { document.body?.classList.toggle("ecMissedDebugActive", on); } catch {}
-  try { console.info(`[Echo-Chat missed PM] debug ${on ? "enabled" : "disabled"}`); } catch {}
+  try { console.info(`[Hui Chat missed PM] debug ${on ? "enabled" : "disabled"}`); } catch {}
   return ecDumpMissedPmDebugState();
 }
 
@@ -559,7 +559,7 @@ function ecMaybePopupMissedPmSummary(items = null, opts = {}) {
     });
   } catch {}
 
-  // When Echo-Chat is visible, also open the rail drawer so the user sees where
+  // When Hui Chat is visible, also open the rail drawer so the user sees where
   // the missed PM is instead of only seeing a changing number.
   try {
     const focused = (typeof ecIsWindowActivelyFocused === 'function') ? ecIsWindowActivelyFocused() : (document.visibilityState === 'visible');

@@ -4,7 +4,7 @@
 let _refreshPromise = null;
 
 // Cross-tab refresh coordination
-// EchoChat uses rotating refresh tokens. If multiple tabs refresh at once, they
+// HuiChat uses rotating refresh tokens. If multiple tabs refresh at once, they
 // fight over the cookie and can cause storms (/token/refresh spam, reconnect loops).
 // We coordinate refresh attempts across tabs with a best-effort localStorage lock
 // and (optionally) BroadcastChannel notifications.
@@ -16,21 +16,21 @@ function ecStorageScopeValue(value, fallback = "anonymous") {
 }
 
 function ecStorageScope() {
-  const server = ecStorageScopeValue((window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.server_name) || "Echo-Chat", "echo-chat");
+  const server = ecStorageScopeValue((window.HUI_CFG && window.HUI_CFG.server_name) || "Hui Chat", "hui-chat");
   const user = ecStorageScopeValue(window.USERNAME || "anonymous", "anonymous");
   return `${server}:${user}`;
 }
 
 function ecScopedStorageKey(name) {
   const safeName = ecStorageScopeValue(name || "state", "state");
-  return `echochat:${ecStorageScope()}:${safeName}`;
+  return `hui:${ecStorageScope()}:${safeName}`;
 }
 
 function ecClearLegacyAuthStorageKeys() {
   // Earlier beta builds used origin-global names. Clear them so one account's
   // idle/refresh state cannot influence another account on the same browser.
   try {
-    ["echochat_refresh_lock", "echochat_last_refresh_ts", "echochat_last_user_activity_ms"].forEach((key) => {
+    ["hui_refresh_lock", "hui_last_refresh_ts", "hui_last_user_activity_ms"].forEach((key) => {
       try { localStorage.removeItem(key); } catch {}
     });
   } catch {}
@@ -40,10 +40,10 @@ ecClearLegacyAuthStorageKeys();
 
 const EC_TAB_ID = (() => {
   try {
-    const v = sessionStorage.getItem('echochat_tab_id');
+    const v = sessionStorage.getItem('hui_tab_id');
     if (v) return v;
     const nv = `tab_${Math.random().toString(36).slice(2)}_${Date.now()}`;
-    sessionStorage.setItem('echochat_tab_id', nv);
+    sessionStorage.setItem('hui_tab_id', nv);
     return nv;
   } catch {
     return `tab_${Math.random().toString(36).slice(2)}_${Date.now()}`;
@@ -175,5 +175,5 @@ async function bestEffortLogoutThenRedirect(reason = 'disconnected') {
 // We update last_activity_at from the browser based on real user interaction.
 //
 // Config:
-//   window.ECHOCHAT_CFG.idle_logout_seconds (0 disables)
+//   window.HUI_CFG.idle_logout_seconds (0 disables)
 // ───────────────────────────────────────────────────────────────────────────────

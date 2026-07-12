@@ -8,8 +8,8 @@
 
   const nav = document.getElementById("mobileShellNav");
   const html = document.documentElement;
-  const cfg = window.ECHOCHAT_CFG || {};
-  const serverDevice = window.ECHOCHAT_DEVICE || {};
+  const cfg = window.HUI_CFG || {};
+  const serverDevice = window.HUI_DEVICE || {};
   const COMPACT_SHELL_WIDTH = 1120;
   const COMPACT_SHELL_QUERY = `(max-width: ${COMPACT_SHELL_WIDTH}px), (max-width: 1024px) and (pointer: coarse)`;
   const KEYBOARD_SHELL_QUERY = `(max-height: 520px) and (max-width: ${COMPACT_SHELL_WIDTH}px)`;
@@ -36,7 +36,7 @@
 
   function storageKey() {
     const user = String(window.USERNAME || "guest").replace(/[^a-zA-Z0-9_.-]/g, "_");
-    return `echochat.mobile.panel.${user}`;
+    return `hui.mobile.panel.${user}`;
   }
 
   function readPanel() {
@@ -76,7 +76,7 @@
 
   function mobileHubSectionKey() {
     const user = String(window.USERNAME || "guest").replace(/[^a-zA-Z0-9_.-]/g, "_");
-    return `echochat.mobile.hubSection.${user}`;
+    return `hui.mobile.hubSection.${user}`;
   }
 
   function normalizeMobileHubSection(section) {
@@ -618,7 +618,7 @@
 
   function mobileRoomStepKey() {
     const user = String(window.USERNAME || "guest").replace(/[^a-zA-Z0-9_.-]/g, "_");
-    return `echochat.mobile.roomStep.${user}`;
+    return `hui.mobile.roomStep.${user}`;
   }
 
   function normalizeMobileRoomStep(step) {

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Database bootstrap helpers for EchoChat.
+"""Database bootstrap helpers for HuiChat.
 
 These helpers are used both by interactive setup and by runtime startup so the
 server can:
-  - auto-discover one or more existing EchoChat databases on the same PostgreSQL server
+  - auto-discover one or more existing HuiChat databases on the same PostgreSQL server
   - create the configured database if it does not exist
   - optionally drop/recreate the database
   - repair ownership/schema grants when a bootstrap/admin DSN is available
@@ -25,16 +25,16 @@ from psycopg2 import sql
 from constants import sanitize_postgres_dsn
 
 
-ECHOCHAT_CORE_TABLES = (
+HUI_CORE_TABLES = (
     "users",
     "roles",
     "permissions",
     "user_roles",
     "role_permissions",
-    "echochat_schema_meta",
+    "hui_schema_meta",
 )
 
-ECHOCHAT_MARKER_TABLES = (
+HUI_MARKER_TABLES = (
     "users",
     "chat_rooms",
     "custom_rooms",
@@ -42,7 +42,7 @@ ECHOCHAT_MARKER_TABLES = (
     "permissions",
     "user_roles",
     "role_permissions",
-    "echochat_schema_meta",
+    "hui_schema_meta",
     "friends",
     "friend_requests",
     "blocked_users",
@@ -52,7 +52,7 @@ ECHOCHAT_MARKER_TABLES = (
     "auth_sessions",
 )
 
-ECHOCHAT_REQUIRED_USER_COLUMNS = (
+HUI_REQUIRED_USER_COLUMNS = (
     "id",
     "username",
     "password",
@@ -78,7 +78,7 @@ def _require_mutable_database_name(dbname: str, action: str) -> None:
     if is_protected_database_name(name):
         raise RuntimeError(
             f"Refusing to {action} protected PostgreSQL database '{name}'. "
-            "Choose or create a dedicated Echo-Chat database instead."
+            "Choose or create a dedicated Hui Chat database instead."
         )
 
 
@@ -348,7 +348,7 @@ def drop_database(conn, dbname: str) -> None:
 
 
 
-def probe_echochat_database(dsn: str) -> int:
+def probe_hui_database(dsn: str) -> int:
     conn = psycopg2.connect(dsn)
     try:
         with conn.cursor() as cur:
@@ -356,7 +356,7 @@ def probe_echochat_database(dsn: str) -> int:
                 """
                 SELECT
                     CASE WHEN to_regclass('public.users') IS NOT NULL THEN 1 ELSE 0 END
-                  + CASE WHEN to_regclass('public.echochat_schema_meta') IS NOT NULL THEN 2 ELSE 0 END
+                  + CASE WHEN to_regclass('public.hui_schema_meta') IS NOT NULL THEN 2 ELSE 0 END
                   + CASE WHEN to_regclass('public.roles') IS NOT NULL THEN 1 ELSE 0 END
                   + CASE WHEN to_regclass('public.user_roles') IS NOT NULL THEN 1 ELSE 0 END;
                 """
@@ -397,8 +397,8 @@ def _fetch_public_columns(conn, table_name: str) -> set[str]:
 
 
 
-def inspect_echochat_database(dsn: str) -> dict[str, Any]:
-    """Inspect one PostgreSQL database and report whether it looks usable for Echo-Chat.
+def inspect_hui_database(dsn: str) -> dict[str, Any]:
+    """Inspect one PostgreSQL database and report whether it looks usable for Hui Chat.
 
     This is intentionally read-mostly. The only write-like operation is the same
     savepoint-protected schema create probe used by runtime bootstrap to verify
@@ -410,18 +410,18 @@ def inspect_echochat_database(dsn: str) -> dict[str, Any]:
     try:
         ident = db_identity(conn)
         public_tables = _fetch_public_table_names(conn)
-        present_markers = sorted(public_tables.intersection(ECHOCHAT_MARKER_TABLES))
-        missing_core_tables = [name for name in ECHOCHAT_CORE_TABLES if name not in public_tables]
+        present_markers = sorted(public_tables.intersection(HUI_MARKER_TABLES))
+        missing_core_tables = [name for name in HUI_CORE_TABLES if name not in public_tables]
         users_columns = _fetch_public_columns(conn, "users") if "users" in public_tables else set()
-        missing_user_columns = [name for name in ECHOCHAT_REQUIRED_USER_COLUMNS if name not in users_columns]
+        missing_user_columns = [name for name in HUI_REQUIRED_USER_COLUMNS if name not in users_columns]
         applied_count = 0
         latest_migration = None
-        if "echochat_schema_meta" in public_tables:
+        if "hui_schema_meta" in public_tables:
             with conn.cursor() as cur:
                 cur.execute(
                     """
                     SELECT COUNT(*), MAX(version)
-                      FROM echochat_schema_meta
+                      FROM hui_schema_meta
                      WHERE COALESCE(success, TRUE) = TRUE;
                     """
                 )
@@ -439,17 +439,17 @@ def inspect_echochat_database(dsn: str) -> dict[str, Any]:
 
         public_table_count = len(public_tables)
         marker_count = len(present_markers)
-        score = marker_count + (2 if "echochat_schema_meta" in public_tables else 0) + applied_count
-        has_echochat_markers = marker_count > 0
+        score = marker_count + (2 if "hui_schema_meta" in public_tables else 0) + applied_count
+        has_hui_markers = marker_count > 0
         if public_table_count == 0:
             state = "empty"
-        elif not has_echochat_markers:
+        elif not has_hui_markers:
             state = "foreign_schema"
         elif missing_core_tables or missing_user_columns:
-            state = "partial_echochat"
+            state = "partial_hui"
         else:
-            state = "valid_echochat"
-        valid = state == "valid_echochat" and bool(permissions.get("usage")) and bool(permissions.get("create"))
+            state = "valid_hui"
+        valid = state == "valid_hui" and bool(permissions.get("usage")) and bool(permissions.get("create"))
         return {
             "dsn": target_dsn,
             "database": str(ident.get("current_database") or parts["db"]),
@@ -498,9 +498,9 @@ def _database_exists_via_local_admin(parts: dict[str, Any], dbname: str) -> bool
 
 
 def target_database_status(dsn: str, *, bootstrap_dsn: str | None = None) -> dict[str, Any]:
-    """Report whether the configured target database exists, separately from Echo-Chat schema detection.
+    """Report whether the configured target database exists, separately from Hui Chat schema detection.
 
-    Auto-discovery intentionally looks for Echo-Chat marker tables. That is not
+    Auto-discovery intentionally looks for Hui Chat marker tables. That is not
     the same thing as detecting whether the configured PostgreSQL database
     already exists. Setup needs both facts so an existing empty database is not
     reported as "none found" in a confusing way.
@@ -520,7 +520,7 @@ def target_database_status(dsn: str, *, bootstrap_dsn: str | None = None) -> dic
     }
 
     try:
-        report = inspect_echochat_database(target_dsn)
+        report = inspect_hui_database(target_dsn)
         report = dict(report or {})
         report.update({
             "exists": True,
@@ -560,17 +560,17 @@ def target_database_status(dsn: str, *, bootstrap_dsn: str | None = None) -> dic
     return status
 
 
-def validate_echochat_database(dsn: str) -> dict[str, Any]:
+def validate_hui_database(dsn: str) -> dict[str, Any]:
     """Public setup/runtime helper: inspect the configured database target."""
-    return inspect_echochat_database(dsn)
+    return inspect_hui_database(dsn)
 
 
 
-def discover_echochat_database_candidates(dsn: str, *, bootstrap_dsn: str | None = None) -> list[dict[str, Any]]:
-    """Return every accessible database that appears to contain Echo-Chat tables.
+def discover_hui_database_candidates(dsn: str, *, bootstrap_dsn: str | None = None) -> list[dict[str, Any]]:
+    """Return every accessible database that appears to contain Hui Chat tables.
 
     Older setup code returned only one auto-detected database. That was unsafe on
-    machines where admins had multiple test/prod Echo-Chat databases. The setup
+    machines where admins had multiple test/prod Hui Chat databases. The setup
     wizard now uses this list to make the admin choose explicitly.
     """
     parts = dsn_parts(dsn)
@@ -606,7 +606,7 @@ def discover_echochat_database_candidates(dsn: str, *, bootstrap_dsn: str | None
         seen.add(dbname)
         candidate_dsn = build_postgres_dsn(parts, dbname)
         try:
-            report = inspect_echochat_database(candidate_dsn)
+            report = inspect_hui_database(candidate_dsn)
         except Exception:
             continue
         if int(report.get("marker_count") or 0) > 0:
@@ -625,7 +625,7 @@ def discover_echochat_database_candidates(dsn: str, *, bootstrap_dsn: str | None
 
 
 def discover_existing_server_database_dsn(dsn: str, *, bootstrap_dsn: str | None = None) -> str | None:
-    candidates = discover_echochat_database_candidates(dsn, bootstrap_dsn=bootstrap_dsn)
+    candidates = discover_hui_database_candidates(dsn, bootstrap_dsn=bootstrap_dsn)
     if not candidates:
         return None
     best_score = int(candidates[0].get("score") or 0)
@@ -654,9 +654,9 @@ def db_identity(conn) -> dict[str, Any]:
 
 
 def _runtime_schema_create_probe(conn) -> bool:
-    probe_name = f"__echochat_schema_probe_{os.getpid()}"
+    probe_name = f"__hui_schema_probe_{os.getpid()}"
     with conn.cursor() as cur:
-        cur.execute("SAVEPOINT echochat_schema_probe;")
+        cur.execute("SAVEPOINT hui_schema_probe;")
         try:
             cur.execute(
                 sql.SQL("CREATE TABLE public.{} (id INTEGER)").format(
@@ -668,11 +668,11 @@ def _runtime_schema_create_probe(conn) -> bool:
                     sql.Identifier(probe_name)
                 )
             )
-            cur.execute("RELEASE SAVEPOINT echochat_schema_probe;")
+            cur.execute("RELEASE SAVEPOINT hui_schema_probe;")
             return True
         except Exception:
-            cur.execute("ROLLBACK TO SAVEPOINT echochat_schema_probe;")
-            cur.execute("RELEASE SAVEPOINT echochat_schema_probe;")
+            cur.execute("ROLLBACK TO SAVEPOINT hui_schema_probe;")
+            cur.execute("RELEASE SAVEPOINT hui_schema_probe;")
             return False
 
 

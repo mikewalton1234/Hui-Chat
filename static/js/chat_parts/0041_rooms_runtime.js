@@ -177,7 +177,7 @@ async function ecLoadRoomsViaHttpFallback(reason = '') {
       return true;
     }
   } catch (e) {
-    try { console.warn('[Echo-Chat] room HTTP fallback failed', reason, e); } catch {}
+    try { console.warn('[Hui Chat] room HTTP fallback failed', reason, e); } catch {}
   }
   return false;
 }
@@ -290,7 +290,7 @@ function bestEffortForceLogout(payload) {
     if (who && currentUser && String(who) !== String(currentUser)) return;
 
     const reason = String(payload?.code || payload?.reason || payload?.message || "session_revoked");
-    try { sessionStorage.setItem("echochat_logout_reason", String(payload?.reason || payload?.message || "Signed out")); } catch (e) {}
+    try { sessionStorage.setItem("hui_logout_reason", String(payload?.reason || payload?.message || "Signed out")); } catch (e) {}
     try { socket.disconnect(); } catch (e) {}
     if (typeof bestEffortLogoutThenRedirect === 'function') {
       bestEffortLogoutThenRedirect(reason).catch(() => {
@@ -464,8 +464,8 @@ function joinRoom(room, opts) {
       // returned by the server, not the originally requested base room. This
       // matters when autosplit sends the user to e.g. "Teen Talk (2)".
       try {
-        sessionStorage.setItem("echochat_last_room", String(joinedRoom));
-        sessionStorage.setItem("echochat_last_room_set_at", String(Date.now()));
+        sessionStorage.setItem("hui_last_room", String(joinedRoom));
+        sessionStorage.setItem("hui_last_room_set_at", String(Date.now()));
       } catch (e) {}
 
       if (!silent && !restore) {
@@ -478,7 +478,7 @@ function joinRoom(room, opts) {
         preserveLog: previousRoom === joinedRoom && (restore || sameRoomReasserted)
       });
 
-      const standardVoiceWanted = !!(VOICE_STATE?.room?.wantRoomVoice) || (() => { try { return sessionStorage.getItem("echochat_voice_desired") === "1"; } catch { return false; } })();
+      const standardVoiceWanted = !!(VOICE_STATE?.room?.wantRoomVoice) || (() => { try { return sessionStorage.getItem("hui_voice_desired") === "1"; } catch { return false; } })();
       if (previousVoiceRoom && previousVoiceRoom !== joinedRoom && VOICE_STATE?.room?.joined && String(VOICE_STATE.room.name || '') === previousVoiceRoom) {
         voiceLeaveRoom("Switching rooms", true, { keepDesired: true, silent: true });
       }
@@ -551,11 +551,11 @@ function leaveRoom() {
       UIState.currentRoom = null;
       // Clear restore targets when the user intentionally leaves.
       try {
-        sessionStorage.removeItem("echochat_last_room");
-        sessionStorage.removeItem("echochat_last_room_set_at");
-        sessionStorage.removeItem("echochat_voice_room");
-        sessionStorage.removeItem("echochat_voice_room_joined");
-        // Keep echochat_voice_desired so the next joined room can restore voice.
+        sessionStorage.removeItem("hui_last_room");
+        sessionStorage.removeItem("hui_last_room_set_at");
+        sessionStorage.removeItem("hui_voice_room");
+        sessionStorage.removeItem("hui_voice_room_joined");
+        // Keep hui_voice_desired so the next joined room can restore voice.
         // The Voice button itself clears this when the user disables voice.
       } catch (e) {}
       const roomToJoin = $("roomToJoin");
@@ -923,8 +923,8 @@ function ecRenderRoomUsersPayload(payload) {
       title: webcamActive ? `Request/view ${u}'s webcam` : `${u} does not have webcam on`,
       disabled: !canViewCam,
       onClick: async () => {
-        if (typeof echoRequestRemoteCamFromRoomUser === "function") {
-          await echoRequestRemoteCamFromRoomUser(u, room || UIState.currentRoom);
+        if (typeof huiRequestRemoteCamFromRoomUser === "function") {
+          await huiRequestRemoteCamFromRoomUser(u, room || UIState.currentRoom);
         } else {
           toast("📷 Webcam viewing is not ready yet.", "warn");
         }
@@ -1085,10 +1085,10 @@ function forceLeaveRoomUI(room, why) {
     UIState.currentRoom = null;
     // Clear restore targets if we were removed from the active room.
     try {
-      sessionStorage.removeItem("echochat_last_room");
-      sessionStorage.removeItem("echochat_last_room_set_at");
-      sessionStorage.removeItem("echochat_voice_room");
-      sessionStorage.removeItem("echochat_voice_room_joined");
+      sessionStorage.removeItem("hui_last_room");
+      sessionStorage.removeItem("hui_last_room_set_at");
+      sessionStorage.removeItem("hui_voice_room");
+      sessionStorage.removeItem("hui_voice_room_joined");
     } catch (e) {}
     const roomToJoin = $('roomToJoin');
     if (roomToJoin) roomToJoin.value = '';
@@ -1106,7 +1106,7 @@ const EC_ROOM_TYPING_SEND_THROTTLE_MS = 2200;
 const EC_ROOM_TYPING_STATE = new Map();
 
 function ecRoomTypingIndicatorsEnabled() {
-  const cfg = window.ECHOCHAT_CFG || {};
+  const cfg = window.HUI_CFG || {};
   return (typeof ecConfigBool === 'function') ? ecConfigBool(cfg.enable_room_typing_indicators, false) : cfg.enable_room_typing_indicators === true;
 }
 
@@ -1500,7 +1500,7 @@ socket.on("chat_message", async (payload) => {
 
   const view = getActiveRoomView(room);
   if (!view) {
-    try { console.warn('[Echo-Chat] chat_message had no active room view', { room, currentRoom: UIState.currentRoom, roomEmbedRoom: UIState.roomEmbedRoom }); } catch {}
+    try { console.warn('[Hui Chat] chat_message had no active room view', { room, currentRoom: UIState.currentRoom, roomEmbedRoom: UIState.roomEmbedRoom }); } catch {}
     try { if (room && room !== UIState.currentRoom) { rbBumpUnread(room); rbRenderRoomLists(); } } catch {}
     return;
   }

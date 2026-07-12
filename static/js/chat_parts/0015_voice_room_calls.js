@@ -28,10 +28,10 @@ function voiceLeaveRoom(reason = "Left", notifyServer = true, opts = {}) {
   voiceStopAllAutoQualityMonitors();
   // Persisted state (reconnect restore)
   try {
-    sessionStorage.removeItem("echochat_voice_room");
-    sessionStorage.removeItem("echochat_voice_room_joined");
-    if (!keepDesired) sessionStorage.removeItem("echochat_voice_desired");
-    else sessionStorage.setItem("echochat_voice_desired", "1");
+    sessionStorage.removeItem("hui_voice_room");
+    sessionStorage.removeItem("hui_voice_room_joined");
+    if (!keepDesired) sessionStorage.removeItem("hui_voice_desired");
+    else sessionStorage.setItem("hui_voice_desired", "1");
   } catch (e) {}
   if (notifyServer) socket.emit("voice_room_leave", { room }, () => {});
   voiceRoomUi({ show: false });
@@ -59,17 +59,17 @@ function voiceRoomEnsurePeer(room, peer) {
   if (stream) stream.getTracks().forEach(t => pc.addTrack(t, stream));
   voiceApplySenderQuality(pc);
   voiceStartAutoQualityMonitor(`room-${room}-${peer}`, pc);
-  const obj = { pc, remoteEl: null, remoteVideoEl: null, echoVideoSender: null, echoVideoTransceiver: null };
+  const obj = { pc, remoteEl: null, remoteVideoEl: null, huiVideoSender: null, huiVideoTransceiver: null };
   VOICE_STATE.room.peers.set(peer, obj);
   try {
-    if (typeof echoCamAttachTrackToPeer === "function") echoCamAttachTrackToPeer(pc, obj, room, peer);
+    if (typeof huiCamAttachTrackToPeer === "function") huiCamAttachTrackToPeer(pc, obj, room, peer);
   } catch {}
 
   pc.ontrack = (ev) => {
     const st = ev.streams && ev.streams[0];
     if (!st) return;
-    if (ev.track && ev.track.kind === "video" && typeof echoCamAttachRemoteVideo === "function") {
-      obj.remoteVideoEl = echoCamAttachRemoteVideo(room, peer, st);
+    if (ev.track && ev.track.kind === "video" && typeof huiCamAttachRemoteVideo === "function") {
+      obj.remoteVideoEl = huiCamAttachRemoteVideo(room, peer, st);
     } else {
       obj.remoteEl = voiceAttachRemoteAudio(`room-${room}-${peer}`, st);
     }
@@ -77,34 +77,34 @@ function voiceRoomEnsurePeer(room, peer) {
   pc.onicecandidate = (ev) => {
     if (ev.candidate) socket.emit("voice_room_ice", { room, to: peer, candidate: ev.candidate });
   };
-  pc._echoIceRestartOffer = async () => {
-    if (pc.signalingState !== "stable" || pc._echoMakingOffer) return false;
-    pc._echoMakingOffer = true;
+  pc._huiIceRestartOffer = async () => {
+    if (pc.signalingState !== "stable" || pc._huiMakingOffer) return false;
+    pc._huiMakingOffer = true;
     try {
       const offer = await pc.createOffer({ iceRestart: true });
       await pc.setLocalDescription(offer);
       socket.emit("voice_room_offer", { room, to: peer, offer: pc.localDescription, ice_restart: true });
       return true;
     } finally {
-      pc._echoMakingOffer = false;
+      pc._huiMakingOffer = false;
     }
   };
 
   // Perfect-negotiation-lite: normal room joins keep a deterministic first offer,
   // but later camera/audio track changes may need either side to renegotiate.
-  pc._echoPolite = !voiceRoomIsInitiator(currentUser, peer);
-  pc._echoMakingOffer = false;
-  pc._echoIgnoreOffer = false;
+  pc._huiPolite = !voiceRoomIsInitiator(currentUser, peer);
+  pc._huiMakingOffer = false;
+  pc._huiIgnoreOffer = false;
   pc.onnegotiationneeded = async () => {
     try {
-      pc._echoMakingOffer = true;
+      pc._huiMakingOffer = true;
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
       socket.emit("voice_room_offer", { room, to: peer, offer: pc.localDescription });
     } catch (e) {
       console.warn("voice/video negotiation failed", e);
     } finally {
-      pc._echoMakingOffer = false;
+      pc._huiMakingOffer = false;
     }
   };
 }

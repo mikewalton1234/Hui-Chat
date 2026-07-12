@@ -707,7 +707,7 @@ function renderAlertsInviteListInto(ul, groupInvites, roomInvites, opts = {}) {
       allowBtn.onclick = async (ev) => {
         ev.stopPropagation();
         try {
-          if (typeof echoRespondToCamViewRequest === 'function') await echoRespondToCamViewRequest(room, viewer, true);
+          if (typeof huiRespondToCamViewRequest === 'function') await huiRespondToCamViewRequest(room, viewer, true);
           else toast('❌ Webcam response handler is not ready', 'error');
         } catch (e) {
           toast(`❌ ${e.message || 'Could not allow webcam request'}`, 'error');
@@ -721,7 +721,7 @@ function renderAlertsInviteListInto(ul, groupInvites, roomInvites, opts = {}) {
       denyBtn.onclick = async (ev) => {
         ev.stopPropagation();
         try {
-          if (typeof echoRespondToCamViewRequest === 'function') await echoRespondToCamViewRequest(room, viewer, false);
+          if (typeof huiRespondToCamViewRequest === 'function') await huiRespondToCamViewRequest(room, viewer, false);
           else toast('❌ Webcam response handler is not ready', 'error');
         } catch (e) {
           toast(`❌ ${e.message || 'Could not deny webcam request'}`, 'error');

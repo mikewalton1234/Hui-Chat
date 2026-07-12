@@ -44,7 +44,7 @@ function normalizeDiceBearStyleKey(style) {
 
 function normalizeDiceBearSeed(seed) {
   const value = String(seed || '').trim();
-  return (value || String(currentUser || 'echo')).slice(0, 96) || 'echo';
+  return (value || String(currentUser || 'hui')).slice(0, 96) || 'hui';
 }
 
 function normalizeDiceBearColor(raw, fallback = DICEBEAR_DEFAULT_BG) {
@@ -83,7 +83,7 @@ function detectAvatarPresetSelection(url) {
     if (parsed.origin === window.location.origin && parsed.pathname === '/avatar-preset.svg') {
       const localStyle = String(parsed.searchParams.get('style') || '').trim().toLowerCase();
       const mappedStyle = normalizeDiceBearStyleKey(localStyle);
-      const seed = normalizeDiceBearSeed(parsed.searchParams.get('seed') || 'echo');
+      const seed = normalizeDiceBearSeed(parsed.searchParams.get('seed') || 'hui');
       return { provider: 'legacy-local', style: mappedStyle, seed, backgroundColor: DICEBEAR_DEFAULT_BG, borderRadius: 50, flip: false };
     }
     if (parsed.hostname !== 'api.dicebear.com') return null;
@@ -92,7 +92,7 @@ function detectAvatarPresetSelection(url) {
     const style = normalizeDiceBearStyleKey(parts[1] || '');
     const format = parts[2] || '';
     if (!/^\d+\.x$/i.test(version) || format !== 'svg') return null;
-    const seed = normalizeDiceBearSeed(parsed.searchParams.get('seed') || 'echo');
+    const seed = normalizeDiceBearSeed(parsed.searchParams.get('seed') || 'hui');
     const backgroundColor = normalizeDiceBearColor(parsed.searchParams.get('backgroundColor') || DICEBEAR_DEFAULT_BG);
     const borderRadius = normalizeDiceBearBorderRadius(parsed.searchParams.get('borderRadius') || 50);
     const flip = String(parsed.searchParams.get('flip') || '').toLowerCase() === 'true';
@@ -104,18 +104,18 @@ function detectAvatarPresetSelection(url) {
 }
 
 function buildAvatarPresetSeed(username, style, index) {
-  const base = String(username || currentUser || 'echo').trim() || 'echo';
+  const base = String(username || currentUser || 'hui').trim() || 'hui';
   return `${base}-${normalizeDiceBearStyleKey(style)}-${index}`;
 }
 
 function buildDiceBearRandomSeed(username = '') {
-  const base = String(username || currentUser || 'echo').trim() || 'echo';
+  const base = String(username || currentUser || 'hui').trim() || 'hui';
   const randomPart = Math.random().toString(36).slice(2, 10);
   return `${base}-${Date.now().toString(36)}-${randomPart}`;
 }
 
 function ecProfileMediaConfig() {
-  return (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === 'object') ? window.ECHOCHAT_CFG : {};
+  return (window.HUI_CFG && typeof window.HUI_CFG === 'object') ? window.HUI_CFG : {};
 }
 
 function ecProfileAvatarAcceptMimeTypes() {

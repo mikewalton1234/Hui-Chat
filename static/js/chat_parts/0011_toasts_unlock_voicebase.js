@@ -5,14 +5,14 @@
 // /static/js/sound_packs/*.js fallbacks. They register themselves before the chat runtime parts
 // runs. If they load first, they queue metadata in window.EC_PENDING_SOUND_PACKS
 // and this registry consumes it.
-const EC_SOUND_PACK_DEFAULT = "echo_modern_generated";
+const EC_SOUND_PACK_DEFAULT = "hui_modern_generated";
 const EC_SOUND_PACK_FILES = Object.freeze([
-  { id: "echo_modern_generated", file: "0001_echo_modern_generated.js", label: "Echo modern generated", description: "Default generated JavaScript UI sounds; local fallback copy." },
+  { id: "hui_modern_generated", file: "0001_hui_modern_generated.js", label: "Hui modern generated", description: "Default generated JavaScript UI sounds; local fallback copy." },
   { id: "classic_messenger_generated", file: "0002_classic_messenger_generated.js", label: "Classic messenger generated", description: "Nostalgic generated messenger-style sounds; local fallback copy." }
 ]);
 
 window.EC_PENDING_SOUND_PACKS = Array.isArray(window.EC_PENDING_SOUND_PACKS) ? window.EC_PENDING_SOUND_PACKS : [];
-window.EchoChatSoundPacks = window.EchoChatSoundPacks || (function () {
+window.HuiChatSoundPacks = window.HuiChatSoundPacks || (function () {
   const packs = new Map();
   const soundToPack = new Map();
 
@@ -89,11 +89,11 @@ window.EchoChatSoundPacks = window.EchoChatSoundPacks || (function () {
       audio.volume = Math.max(0, Math.min(1, Number.isFinite(Number(volume)) ? Number(volume) : 0.7));
       const result = audio.play();
       if (result && typeof result.catch === "function") {
-        result.catch((err) => { try { console.warn("Echo-Chat remote sound play failed", err); } catch {} });
+        result.catch((err) => { try { console.warn("Hui Chat remote sound play failed", err); } catch {} });
       }
       return true;
     } catch (err) {
-      try { console.warn("Echo-Chat remote sound failed", err); } catch {}
+      try { console.warn("Hui Chat remote sound failed", err); } catch {}
       return false;
     }
   }
@@ -108,7 +108,7 @@ window.EchoChatSoundPacks = window.EchoChatSoundPacks || (function () {
         pack.play(id, ctx, helpers, kind);
         return true;
       } catch (err) {
-        try { console.warn("Echo-Chat sound pack failed", pack.id, id, err); } catch {}
+        try { console.warn("Hui Chat sound pack failed", pack.id, id, err); } catch {}
       }
     }
     if (sound?.url) return playRemoteUrl(sound.url, sound.volume);
@@ -120,15 +120,15 @@ window.EchoChatSoundPacks = window.EchoChatSoundPacks || (function () {
 
 try {
   const pending = Array.isArray(window.EC_PENDING_SOUND_PACKS) ? window.EC_PENDING_SOUND_PACKS.splice(0) : [];
-  pending.forEach((pack) => window.EchoChatSoundPacks.register(pack));
+  pending.forEach((pack) => window.HuiChatSoundPacks.register(pack));
 } catch {}
 
-const EchoChatSoundPacks = window.EchoChatSoundPacks;
+const HuiChatSoundPacks = window.HuiChatSoundPacks;
 
 function ecRegisterKnownOnlineSoundLibraries() {
   try {
     const sns = window.SimpleNotificationSounds;
-    if (sns && !EchoChatSoundPacks.getPackForSound?.("sns_attention_medium")) {
+    if (sns && !HuiChatSoundPacks.getPackForSound?.("sns_attention_medium")) {
       const variants = ["short", "medium", "long"];
       const groups = [
         ["attention", "Attention", "playAttention"],
@@ -145,7 +145,7 @@ function ecRegisterKnownOnlineSoundLibraries() {
           description: `Online Simple Notification Sounds ${label.toLowerCase()} cue (${variant}).`
         }));
       });
-      EchoChatSoundPacks.register({
+      HuiChatSoundPacks.register({
         id: "simple_notification_sounds_cdn",
         file: "https://cdn.jsdelivr.net/npm/simple-notification-sounds@1.0.0/dist/simple-notification-sounds.umd.js",
         label: "Simple Notification Sounds CDN",
@@ -162,7 +162,7 @@ function ecRegisterKnownOnlineSoundLibraries() {
       });
     }
   } catch (err) {
-    try { console.warn("Echo-Chat online sound library bridge failed", err); } catch {}
+    try { console.warn("Hui Chat online sound library bridge failed", err); } catch {}
   }
 }
 
@@ -218,7 +218,7 @@ const EC_SOUND_THEME_LABELS = Object.freeze({
 
 // Server/default event sound map. Admins can override these from the injected
 // admin-only System settings panel; clients receive the non-secret values in
-// ECHOCHAT_CFG.sound_event_themes. End users can still turn sounds off locally.
+// HUI_CFG.sound_event_themes. End users can still turn sounds off locally.
 const EC_SOUND_EVENT_DEFAULTS = Object.freeze({
   dm: "mellow_pluck",
   room_message: "soft_chime",
@@ -245,20 +245,20 @@ const EC_SOUND_EVENT_LABELS = Object.freeze({
 
 function ecNormalizeSoundPackId(value) {
   const key = String(value || "").trim().toLowerCase().replace(/[^a-z0-9_:-]+/g, "_").replace(/_+/g, "_").replace(/^_+|_+$/g, "");
-  const known = (EchoChatSoundPacks?.listPacks?.() || []).map((pack) => pack.id);
+  const known = (HuiChatSoundPacks?.listPacks?.() || []).map((pack) => pack.id);
   if (known.includes(key)) return key;
-  const fileMatch = (EchoChatSoundPacks?.listPacks?.() || []).find((pack) => String(pack.file || "").toLowerCase() === key || String(pack.file || "").toLowerCase().replace(/\.js$/, "") === key.replace(/\.js$/, ""));
+  const fileMatch = (HuiChatSoundPacks?.listPacks?.() || []).find((pack) => String(pack.file || "").toLowerCase() === key || String(pack.file || "").toLowerCase().replace(/\.js$/, "") === key.replace(/\.js$/, ""));
   return fileMatch?.id || EC_SOUND_PACK_DEFAULT;
 }
 
 function ecSoundPackOptionRows() {
-  const packs = EchoChatSoundPacks?.listPacks?.() || [];
+  const packs = HuiChatSoundPacks?.listPacks?.() || [];
   if (packs.length) return packs;
   return EC_SOUND_PACK_FILES.map((entry) => ({ ...entry, sounds: [] }));
 }
 
 function ecSoundThemeOptionRows() {
-  const loaded = EchoChatSoundPacks?.listSounds?.() || [];
+  const loaded = HuiChatSoundPacks?.listSounds?.() || [];
   if (loaded.length) return loaded;
   return EC_SOUND_THEME_OPTIONS.map((id) => ({
     id,
@@ -271,7 +271,7 @@ function ecSoundThemeOptionRows() {
 
 function ecPopulateSoundPackSelect(select, selectedValue) {
   if (!select) return;
-  const selected = ecNormalizeSoundPackId(selectedValue || ECHOCHAT_CFG?.sound_pack_default || EC_SOUND_PACK_DEFAULT);
+  const selected = ecNormalizeSoundPackId(selectedValue || HUI_CFG?.sound_pack_default || EC_SOUND_PACK_DEFAULT);
   select.textContent = "";
   ecSoundPackOptionRows().forEach((pack) => {
     const opt = document.createElement("option");
@@ -328,7 +328,7 @@ function ecNormalizeSoundTheme(value) {
   // v0.11.0-beta.52: remove the old computer-style beep.
   // Existing browsers that saved "classic_beep" now migrate to the soft chime.
   if (key === "classic_beep" || key === "beep" || key === "computer_beep") return EC_SOUND_THEME_DEFAULT;
-  if (EchoChatSoundPacks?.hasSound?.(key)) return key;
+  if (HuiChatSoundPacks?.hasSound?.(key)) return key;
   return EC_SOUND_THEME_OPTIONS.includes(key) ? key : EC_SOUND_THEME_DEFAULT;
 }
 
@@ -365,8 +365,8 @@ function ecNormalizeSoundEvent(value) {
 
 function ecGetServerSoundThemeDefault() {
   return ecNormalizeSoundTheme(
-    ECHOCHAT_CFG?.sound_theme_default ||
-    ECHOCHAT_CFG?.default_sound_theme ||
+    HUI_CFG?.sound_theme_default ||
+    HUI_CFG?.default_sound_theme ||
     EC_SOUND_THEME_DEFAULT
   );
 }
@@ -374,10 +374,10 @@ function ecGetServerSoundThemeDefault() {
 function ecGetServerEventSoundTheme(eventName) {
   const eventKey = ecNormalizeSoundEvent(eventName);
   if (!eventKey) return "";
-  const configured = (ECHOCHAT_CFG && typeof ECHOCHAT_CFG.sound_event_themes === "object")
-    ? ECHOCHAT_CFG.sound_event_themes
+  const configured = (HUI_CFG && typeof HUI_CFG.sound_event_themes === "object")
+    ? HUI_CFG.sound_event_themes
     : {};
-  const raw = configured[eventKey] || ECHOCHAT_CFG?.[`sound_event_${eventKey}`] || EC_SOUND_EVENT_DEFAULTS[eventKey];
+  const raw = configured[eventKey] || HUI_CFG?.[`sound_event_${eventKey}`] || EC_SOUND_EVENT_DEFAULTS[eventKey];
   return ecNormalizeSoundTheme(raw);
 }
 
@@ -511,7 +511,7 @@ function ecPlaySoundTheme(theme, kind = "info") {
 
   // Prefer the loaded /static/js/sound_packs/*.js implementation.  The switch
   // below remains as a safe built-in fallback if a pack file is missing.
-  if (EchoChatSoundPacks?.play?.(normalizedTheme, ctx, ecGetSoundPackHelpers(), kind)) return;
+  if (HuiChatSoundPacks?.play?.(normalizedTheme, ctx, ecGetSoundPackHelpers(), kind)) return;
 
   switch (normalizedTheme) {
     case "bubble_pop":
@@ -719,7 +719,7 @@ function ecIsWindowActivelyFocused() {
 }
 
 function ecShouldBrowserNotifyNow(opts = {}) {
-  // Browser/OS notifications are for away-state attention. When Echo Chat is
+  // Browser/OS notifications are for away-state attention. When Hui Chat is
   // already focused, the in-app UI is the notification surface; firing both a
   // toast and OS popup creates the duplicate/noisy behavior seen during room chat.
   if (opts?.force === true || opts?.allowWhileFocused === true) return true;
@@ -901,12 +901,12 @@ const GROUP_ENVELOPE_PREFIX = "ECG1:";
 // Cache RSA public keys (username -> { key: CryptoKey, fetchedAt: ms })
 // NOTE: Keys can rotate (e.g., after password reset). Never cache forever.
 const RSA_PUBKEY_CACHE = new Map();
-const RSA_PUBKEY_CACHE_TTL_MS = Number((window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.pubkey_cache_ttl_ms) || 60_000);
+const RSA_PUBKEY_CACHE_TTL_MS = Number((window.HUI_CFG && window.HUI_CFG.pubkey_cache_ttl_ms) || 60_000);
 // Non-secret server-provided client config (injected in templates/chat.html)
 
 // DM encryption policy (server-configurable)
-const ALLOW_PLAINTEXT_DM_FALLBACK = (ECHOCHAT_CFG.allow_plaintext_dm_fallback === undefined) ? false : !!ECHOCHAT_CFG.allow_plaintext_dm_fallback;
-const REQUIRE_DM_E2EE = (ECHOCHAT_CFG.require_dm_e2ee === undefined) ? true : !!ECHOCHAT_CFG.require_dm_e2ee;
+const ALLOW_PLAINTEXT_DM_FALLBACK = (HUI_CFG.allow_plaintext_dm_fallback === undefined) ? false : !!HUI_CFG.allow_plaintext_dm_fallback;
+const REQUIRE_DM_E2EE = (HUI_CFG.require_dm_e2ee === undefined) ? true : !!HUI_CFG.require_dm_e2ee;
 const DM_PLAINTEXT_COMPAT_ALLOWED = ALLOW_PLAINTEXT_DM_FALLBACK && !REQUIRE_DM_E2EE;
 
 function ecConfigBool(value, defaultValue = false) {
@@ -927,20 +927,20 @@ function ecConfigInt(value, defaultValue, minValue = 1, maxValue = Number.MAX_SA
 }
 
 // Keep in sync with server max_dm_file_bytes (routes_main.py). Server can override per config.
-const MAX_DM_FILE_BYTES = ecConfigInt(ECHOCHAT_CFG.max_dm_file_bytes, 10 * 1024 * 1024, 1, 1024 * 1024 * 1024);
-const MAX_GROUP_FILE_BYTES = ecConfigInt(ECHOCHAT_CFG.max_group_file_bytes, MAX_DM_FILE_BYTES, 1, 1024 * 1024 * 1024);
-const MAX_TORRENT_UPLOAD_BYTES = ecConfigInt(ECHOCHAT_CFG.max_torrent_upload_bytes, 1_000_000, 1024, 5_000_000);
-const FILE_TRANSFER_DISABLED = ecConfigBool(ECHOCHAT_CFG.disable_file_transfer_globally, false);
-const DM_FILE_DISABLED = FILE_TRANSFER_DISABLED || ecConfigBool(ECHOCHAT_CFG.disable_dm_files_globally, false);
-const GROUP_FILE_DISABLED = FILE_TRANSFER_DISABLED || ecConfigBool(ECHOCHAT_CFG.disable_group_files_globally, false);
+const MAX_DM_FILE_BYTES = ecConfigInt(HUI_CFG.max_dm_file_bytes, 10 * 1024 * 1024, 1, 1024 * 1024 * 1024);
+const MAX_GROUP_FILE_BYTES = ecConfigInt(HUI_CFG.max_group_file_bytes, MAX_DM_FILE_BYTES, 1, 1024 * 1024 * 1024);
+const MAX_TORRENT_UPLOAD_BYTES = ecConfigInt(HUI_CFG.max_torrent_upload_bytes, 1_000_000, 1024, 5_000_000);
+const FILE_TRANSFER_DISABLED = ecConfigBool(HUI_CFG.disable_file_transfer_globally, false);
+const DM_FILE_DISABLED = FILE_TRANSFER_DISABLED || ecConfigBool(HUI_CFG.disable_dm_files_globally, false);
+const GROUP_FILE_DISABLED = FILE_TRANSFER_DISABLED || ecConfigBool(HUI_CFG.disable_group_files_globally, false);
 
 // Attempt WebRTC P2P first, fallback to server upload.
-const P2P_FILE_ENABLED = !FILE_TRANSFER_DISABLED && ecConfigBool(ECHOCHAT_CFG.p2p_file_enabled, true);
-const P2P_FILE_CHUNK_BYTES = ecConfigInt(ECHOCHAT_CFG.p2p_file_chunk_bytes ?? ECHOCHAT_CFG.p2p_chunk_bytes, 64 * 1024, 1024, 1024 * 1024);
-const P2P_FILE_HANDSHAKE_TIMEOUT_MS = ecConfigInt(ECHOCHAT_CFG.p2p_file_handshake_timeout_ms ?? ECHOCHAT_CFG.p2p_handshake_timeout_ms, 7_000, 100, 600_000);
-const P2P_FILE_TRANSFER_TIMEOUT_MS = ecConfigInt(ECHOCHAT_CFG.p2p_file_transfer_timeout_ms ?? ECHOCHAT_CFG.p2p_transfer_timeout_ms, 120_000, 1000, 30 * 60_000);
-const P2P_ICE_SERVERS = (Array.isArray(ECHOCHAT_CFG.p2p_ice_servers) && ECHOCHAT_CFG.p2p_ice_servers.length)
-  ? ECHOCHAT_CFG.p2p_ice_servers
+const P2P_FILE_ENABLED = !FILE_TRANSFER_DISABLED && ecConfigBool(HUI_CFG.p2p_file_enabled, true);
+const P2P_FILE_CHUNK_BYTES = ecConfigInt(HUI_CFG.p2p_file_chunk_bytes ?? HUI_CFG.p2p_chunk_bytes, 64 * 1024, 1024, 1024 * 1024);
+const P2P_FILE_HANDSHAKE_TIMEOUT_MS = ecConfigInt(HUI_CFG.p2p_file_handshake_timeout_ms ?? HUI_CFG.p2p_handshake_timeout_ms, 7_000, 100, 600_000);
+const P2P_FILE_TRANSFER_TIMEOUT_MS = ecConfigInt(HUI_CFG.p2p_file_transfer_timeout_ms ?? HUI_CFG.p2p_transfer_timeout_ms, 120_000, 1000, 30 * 60_000);
+const P2P_ICE_SERVERS = (Array.isArray(HUI_CFG.p2p_ice_servers) && HUI_CFG.p2p_ice_servers.length)
+  ? HUI_CFG.p2p_ice_servers
   : [
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
@@ -954,27 +954,27 @@ const P2P_ICE_QUEUE_LIMIT = 64;
 // ───────────────────────────────────────────────────────────────────────────────
 // Voice chat (WebRTC audio) — rooms + 1:1 calls
 // ───────────────────────────────────────────────────────────────────────────────
-const VOICE_ENABLED = ecConfigBool(ECHOCHAT_CFG.voice_enabled, true);
+const VOICE_ENABLED = ecConfigBool(HUI_CFG.voice_enabled, true);
 // Missing/blank defaults to 100. IMPORTANT: explicit 0 still means unlimited.
 const VOICE_MAX_ROOM_PEERS = (() => {
-  const v = ECHOCHAT_CFG.voice_max_room_peers;
+  const v = HUI_CFG.voice_max_room_peers;
   if (v === undefined || v === null || v === "") return 100;
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 })();
-const VOICE_ICE_SERVERS = (Array.isArray(ECHOCHAT_CFG.voice_ice_servers) && ECHOCHAT_CFG.voice_ice_servers.length)
-  ? ECHOCHAT_CFG.voice_ice_servers
+const VOICE_ICE_SERVERS = (Array.isArray(HUI_CFG.voice_ice_servers) && HUI_CFG.voice_ice_servers.length)
+  ? HUI_CFG.voice_ice_servers
   : P2P_ICE_SERVERS;
-const VOICE_AUDIO_QUALITY = String(ECHOCHAT_CFG.voice_audio_quality || "balanced").toLowerCase();
-const VOICE_AUDIO_SAMPLE_RATE = Number(ECHOCHAT_CFG.voice_audio_sample_rate) || 24000;
-const VOICE_AUDIO_MAX_BITRATE = Number(ECHOCHAT_CFG.voice_audio_max_bitrate) || 40000;
-const VOICE_AUTO_QUALITY = ecConfigBool(ECHOCHAT_CFG.voice_auto_quality, true);
-const VOICE_NOISE_CANCELLATION = ecConfigBool(ECHOCHAT_CFG.voice_noise_cancellation, true);
-const VOICE_ECHO_CANCELLATION = ecConfigBool(ECHOCHAT_CFG.voice_echo_cancellation, true);
-const VOICE_AUTO_GAIN_CONTROL = ecConfigBool(ECHOCHAT_CFG.voice_auto_gain_control, true);
-const VOICE_DEFAULT_PUSH_TO_TALK = ecConfigBool(ECHOCHAT_CFG.voice_default_push_to_talk, true);
-const VOICE_QUALITY_PROFILES = (ECHOCHAT_CFG.voice_quality_profiles && typeof ECHOCHAT_CFG.voice_quality_profiles === "object")
-  ? ECHOCHAT_CFG.voice_quality_profiles
+const VOICE_AUDIO_QUALITY = String(HUI_CFG.voice_audio_quality || "balanced").toLowerCase();
+const VOICE_AUDIO_SAMPLE_RATE = Number(HUI_CFG.voice_audio_sample_rate) || 24000;
+const VOICE_AUDIO_MAX_BITRATE = Number(HUI_CFG.voice_audio_max_bitrate) || 40000;
+const VOICE_AUTO_QUALITY = ecConfigBool(HUI_CFG.voice_auto_quality, true);
+const VOICE_NOISE_CANCELLATION = ecConfigBool(HUI_CFG.voice_noise_cancellation, true);
+const VOICE_ECHO_CANCELLATION = ecConfigBool(HUI_CFG.voice_echo_cancellation, true);
+const VOICE_AUTO_GAIN_CONTROL = ecConfigBool(HUI_CFG.voice_auto_gain_control, true);
+const VOICE_DEFAULT_PUSH_TO_TALK = ecConfigBool(HUI_CFG.voice_default_push_to_talk, true);
+const VOICE_QUALITY_PROFILES = (HUI_CFG.voice_quality_profiles && typeof HUI_CFG.voice_quality_profiles === "object")
+  ? HUI_CFG.voice_quality_profiles
   : {
       low: { label: "Low bandwidth", sample_rate: 16000, max_bitrate: 24000 },
       balanced: { label: "Balanced", sample_rate: 24000, max_bitrate: 40000 },

@@ -19,7 +19,7 @@ def prepare_runtime_database(settings: dict) -> dict:
     """Normalize runtime DSNs and best-effort prepare the target database."""
     runtime_dsn = str(sanitize_postgres_dsn(str(settings.get("database_url") or get_db_connection_string(settings))))
     bootstrap_dsn = (
-        os.getenv("ECHOCHAT_DB_BOOTSTRAP_URL")
+        os.getenv("HUI_DB_BOOTSTRAP_URL")
         or os.getenv("DATABASE_BOOTSTRAP_URL")
         or settings.get("database_bootstrap_url")
         or ""
@@ -28,7 +28,7 @@ def prepare_runtime_database(settings: dict) -> dict:
         raise RuntimeError(
             "PostgreSQL DSN is empty. Run `python main.py --setup` and choose/create a local "
             "PostgreSQL database, or set DATABASE_URL/DB_CONNECTION_STRING. Example: "
-            "DATABASE_URL=postgresql://$USER@localhost:5432/echochat"
+            "DATABASE_URL=postgresql://$USER@localhost:5432/hui_chat"
         )
     settings["database_url"] = runtime_dsn
     if bootstrap_dsn:
@@ -49,18 +49,30 @@ def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None, *,
     shared._DB_POOL_MIN = int(minconn)
     shared._DB_POOL_MAX = int(maxconn)
     if allow_direct_fallback is None:
-        raw = os.getenv("ECHOCHAT_DB_POOL_DIRECT_FALLBACK", "").strip().lower()
+        raw = os.getenv("HUI_DB_POOL_DIRECT_FALLBACK", "").strip().lower()
         allow_direct_fallback = raw in {"1", "true", "yes", "on"}
     shared._ALLOW_DIRECT_FALLBACK = bool(allow_direct_fallback)
+
+    # TCP keepalives prevent Replit's managed Postgres from silently dropping idle
+    # connections mid-pool.  Without these, the server closes the SSL socket after
+    # ~minutes of inactivity and the next request that draws that connection gets
+    # "SSL connection has been closed unexpectedly".
+    _KEEPALIVE_KWARGS = {
+        "keepalives": 1,
+        "keepalives_idle": 30,      # seconds idle before first probe
+        "keepalives_interval": 10,  # seconds between probes
+        "keepalives_count": 5,      # probes before giving up
+    }
 
     try:
         shared._POOL = shared.ThreadedConnectionPool(
             minconn=int(minconn),
             maxconn=int(maxconn),
             dsn=shared._DSN,
+            **_KEEPALIVE_KWARGS,
         )
         shared._POOL_INIT_ERROR = None
-        logging.info("✅  Postgres connection pool ready (min=%s max=%s)", minconn, maxconn)
+        logging.info("✅  Postgres connection pool ready (min=%s max=%s, keepalives on)", minconn, maxconn)
     except Exception as e:
         shared._POOL = None
         shared._POOL_INIT_ERROR = str(e)
@@ -74,19 +86,38 @@ def _acquire_conn():
     """Acquire a connection either from the configured pool or a direct connection.
 
     Once ``init_db_pool()`` has configured a bounded pool, that bound is treated
-    as real capacity.  Echo-Chat used to open unbounded temporary direct
+    as real capacity.  Hui Chat used to open unbounded temporary direct
     connections when the pool was exhausted; that defeated db_pool_max and could
     overload PostgreSQL in scaled deployments.  Direct fallback now requires the
-    explicit ECHOCHAT_DB_POOL_DIRECT_FALLBACK=1 escape hatch.
+    explicit HUI_DB_POOL_DIRECT_FALLBACK=1 escape hatch.
     """
     if shared._POOL is not None:
         try:
-            return shared._POOL.getconn(), True
+            # Discard any stale connections that were closed server-side while
+            # idle in the pool (e.g. Replit managed-Postgres idle timeout).
+            # After a long inactivity period the *entire* pool may be stale, so
+            # retry up to pool-max times rather than just once.
+            _max_discard = max(4, shared._DB_POOL_MAX or 4)
+            for _attempt in range(_max_discard + 1):
+                conn = shared._POOL.getconn()
+                if conn is None or conn.closed == 0:
+                    break
+                logging.warning(
+                    "Discarding closed connection from pool (attempt %d/%d); fetching a fresh one",
+                    _attempt + 1,
+                    _max_discard,
+                )
+                try:
+                    shared._POOL.putconn(conn, close=True)
+                except Exception:
+                    pass
+                conn = None
+            return conn, True
         except PoolError as e:
             if not shared._ALLOW_DIRECT_FALLBACK:
                 raise RuntimeError(
                     "PostgreSQL connection pool is exhausted. Increase db_pool_max, reduce planned instances, "
-                    "or add PgBouncer; Echo-Chat will not open unbounded direct DB connections."
+                    "or add PgBouncer; Hui Chat will not open unbounded direct DB connections."
                 ) from e
             logging.warning("Postgres pool exhausted; direct DB fallback is explicitly enabled: %s", e)
         except Exception as e:
@@ -105,14 +136,24 @@ def _release_conn(conn, from_pool: bool) -> None:
     if conn is None:
         return
     if shared._POOL is not None and from_pool:
+        # If the connection is broken, discard it from the pool entirely rather
+        # than returning it.  Returning a dead connection just means the next
+        # caller will hit the same SSL/OperationalError.
+        broken = conn.closed != 0
+        if not broken:
+            try:
+                conn.rollback()
+            except Exception:
+                broken = True
         try:
-            # Ensure a clean connection is returned to the pool.
-            conn.rollback()
+            shared._POOL.putconn(conn, close=broken)
         except Exception:
             pass
-        shared._POOL.putconn(conn)
     else:
-        conn.close()
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def get_db() -> psycopg2.extensions.connection:
     """
@@ -151,7 +192,7 @@ def init_database():
     skipped = result.get("skipped") or []
     logging.info("Migration result: applied=%s skipped=%s", ", ".join(applied) if applied else "none", ", ".join(skipped) if skipped else "none")
     # Log the *effective* runtime DSN used by the pool/direct connection layer.
-    # This matters when Echo-Chat is started with --config or env overrides: the
+    # This matters when Hui Chat is started with --config or env overrides: the
     # default server_config.json may point somewhere else, and logging that older
     # value makes wrong-database investigations misleading.
     effective_dsn = shared._DSN or get_db_connection_string()
@@ -220,15 +261,15 @@ def get_schema_version() -> str:
     conn = get_db()
     try:
         with conn.cursor() as cur:
-            cur.execute("SELECT to_regclass('public.echochat_schema_meta');")
+            cur.execute("SELECT to_regclass('public.hui_schema_meta');")
             row = cur.fetchone()
             reg = row[0] if row else None
             if reg:
                 cur.execute(
-                    "SELECT version, applied_at FROM echochat_schema_meta WHERE success = TRUE ORDER BY applied_at DESC, version DESC LIMIT 1;"
+                    "SELECT version, applied_at FROM hui_schema_meta WHERE success = TRUE ORDER BY applied_at DESC, version DESC LIMIT 1;"
                 )
                 latest = cur.fetchone()
-                cur.execute("SELECT count(*) FROM echochat_schema_meta WHERE success = TRUE;")
+                cur.execute("SELECT count(*) FROM hui_schema_meta WHERE success = TRUE;")
                 applied_count = int((cur.fetchone() or [0])[0] or 0)
                 if latest and latest[0]:
                     return f"{latest[0]} ({applied_count} applied migrations)"

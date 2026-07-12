@@ -4,7 +4,7 @@ function ecCurrentUsernameForHub() {
 }
 
 function ecProfileSocketTimeoutMs() {
-  const raw = Number(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.profile_socket_ack_timeout_ms);
+  const raw = Number(window.HUI_CFG && window.HUI_CFG.profile_socket_ack_timeout_ms);
   return Number.isFinite(raw) && raw >= 500 ? Math.min(raw, 10000) : 3000;
 }
 

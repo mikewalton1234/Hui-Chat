@@ -322,7 +322,7 @@ async function sendRoomTo(room, plaintext) {
     }
   } catch (e) { /* ignore */ }
 
-  const serverRequiresRoomE2EE = !!(ECHOCHAT_CFG.require_room_e2ee || ECHOCHAT_CFG.require_private_room_e2ee);
+  const serverRequiresRoomE2EE = !!(HUI_CFG.require_room_e2ee || HUI_CFG.require_private_room_e2ee);
   const useE2EE = serverRequiresRoomE2EE ? true : Settings.get("roomE2EE", true);
 
   let filteredPlaintext = String(plaintext ?? "");
@@ -416,7 +416,7 @@ async function sendGroupTo(groupId, plaintext, ctx = {}) {
     return { success: false, command: 'group_command', error: e?.message || String(e) };
   }
 
-  const serverRequiresGroupE2EE = (ECHOCHAT_CFG.require_group_e2ee === undefined) ? true : !!ECHOCHAT_CFG.require_group_e2ee;
+  const serverRequiresGroupE2EE = (HUI_CFG.require_group_e2ee === undefined) ? true : !!HUI_CFG.require_group_e2ee;
   const useE2EE = serverRequiresGroupE2EE ? true : Settings.get("groupE2EE", true);
 
   let filteredPlaintext = String(plaintext ?? "");

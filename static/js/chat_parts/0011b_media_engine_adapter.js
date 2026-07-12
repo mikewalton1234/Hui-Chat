@@ -1,8 +1,8 @@
-// Echo Chat media engine adapter layer
+// Hui Chat media engine adapter layer
 // ───────────────────────────────────────────────────────────────────────────────
 // The room UI should call ecMedia* helpers instead of directly depending on a
-// specific media backend. Echo built-in WebRTC is the default engine today; this
-// registry keeps the UI contract stable for Echo Chat's built-in media
+// specific media backend. Hui built-in WebRTC is the default engine today; this
+// registry keeps the UI contract stable for Hui Chat's built-in media
 // controls and any future backend that follows the same browser contract.
 (function () {
   const engines = new Map();
@@ -62,7 +62,7 @@
     return engine && engine.ready() ? engine : null;
   }
 
-  window.EchoMedia = {
+  window.HuiMedia = {
     register,
     setActive,
     active,
@@ -90,7 +90,7 @@
     return Object.assign({
       engine: state.active || "none",
       connected: false,
-      echoRoom: "",
+      huiRoom: "",
       voiceDesired: false,
       camDesired: false,
       comboDesired: false,

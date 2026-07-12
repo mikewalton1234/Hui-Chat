@@ -632,7 +632,7 @@ def ensure_users_key_columns(conn=None, *, commit: bool = True):
 def ensure_users_security_columns(conn=None, *, commit: bool = True) -> None:
     """Ensure users security/profile columns needed by auth flows exist.
 
-    Older EchoChat databases can predate SMS 2FA and some profile fields. Keep
+    Older HuiChat databases can predate SMS 2FA and some profile fields. Keep
     this idempotent so startup migrations and setup-created databases can
     converge before login/account-security queries run.
     """
@@ -901,7 +901,7 @@ def ensure_auth_session_schema(conn=None, *, commit: bool = True) -> None:
 def ensure_user_verified_column(conn=None, *, commit: bool = True):
     """Ensure users.is_verified exists.
 
-    EchoChat doesn't yet have an explicit email verification workflow, but the
+    HuiChat doesn't yet have an explicit email verification workflow, but the
     room browser requires a server-side "verified" gate for creating custom rooms.
     We default existing users to TRUE for backward compatibility.
     """

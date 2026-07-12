@@ -1,8 +1,8 @@
-const _idleCfg = (window.ECHOCHAT_CFG || {});
+const _idleCfg = (window.HUI_CFG || {});
 const _idleLimitMs = Math.max(0, Number(_idleCfg.idle_logout_seconds || 0)) * 1000;
 const _presenceIdleMs = Math.max(0, Number(_idleCfg.presence_idle_minutes || 0)) * 60 * 1000;
 const _presenceOfflineMs = Math.max(0, Number(_idleCfg.presence_offline_minutes || 0)) * 60 * 1000;
-const _sharedActivityStorageKey = (typeof ecScopedStorageKey === "function") ? ecScopedStorageKey("last_user_activity_ms") : "echochat:anonymous:last_user_activity_ms";
+const _sharedActivityStorageKey = (typeof ecScopedStorageKey === "function") ? ecScopedStorageKey("last_user_activity_ms") : "hui:anonymous:last_user_activity_ms";
 let _lastUserInteractionMs = Date.now();
 let _lastActivityPingMs = 0;
 

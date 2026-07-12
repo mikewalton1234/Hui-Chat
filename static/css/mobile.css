@@ -1,4 +1,4 @@
-/* Echo-Chat mobile shell
+/* Hui Chat mobile shell
    Loaded unconditionally because mobile mode can be enabled by server hints,
    viewport changes, or coarse-pointer tablets after first paint. Desktop stays
    untouched because every broad rule is gated by mobile runtime classes.

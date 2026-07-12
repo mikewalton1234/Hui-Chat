@@ -48,7 +48,7 @@
       }
     }
   };
-  if (window.EchoChatSoundPacks && typeof window.EchoChatSoundPacks.register === "function") window.EchoChatSoundPacks.register(pack);
+  if (window.HuiChatSoundPacks && typeof window.HuiChatSoundPacks.register === "function") window.HuiChatSoundPacks.register(pack);
   else {
     window.EC_PENDING_SOUND_PACKS = Array.isArray(window.EC_PENDING_SOUND_PACKS) ? window.EC_PENDING_SOUND_PACKS : [];
     window.EC_PENDING_SOUND_PACKS.push(pack);

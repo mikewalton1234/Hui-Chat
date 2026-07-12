@@ -348,7 +348,7 @@ async function _copyTorrentText(value, label) {
 
 function _torrentScrapeOn() {
   if (typeof isTorrentScrapeEnabled === "function") return isTorrentScrapeEnabled();
-  const raw = window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_scrape_enabled;
+  const raw = window.HUI_CFG && window.HUI_CFG.torrent_scrape_enabled;
   if (typeof raw === "boolean") return raw;
   const text = String(raw ?? "").trim().toLowerCase();
   if (["1", "true", "yes", "on", "enabled"].includes(text)) return true;
@@ -358,7 +358,7 @@ function _torrentScrapeOn() {
 
 function _torrentDhtOn() {
   if (typeof torrentDhtScrapeEnabled === "function") return torrentDhtScrapeEnabled();
-  const raw = window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_dht_scrape_enabled;
+  const raw = window.HUI_CFG && window.HUI_CFG.torrent_dht_scrape_enabled;
   if (typeof raw === "boolean") return raw;
   const text = String(raw ?? "").trim().toLowerCase();
   if (["1", "true", "yes", "on", "enabled"].includes(text)) return true;
@@ -368,7 +368,7 @@ function _torrentDhtOn() {
 
 function _torrentScrapeOffReason() {
   if (typeof torrentScrapeDisabledReason === "function") return torrentScrapeDisabledReason();
-  return String((window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_scrape_disabled_reason) || "Server setting torrent_scrape_enabled=false.");
+  return String((window.HUI_CFG && window.HUI_CFG.torrent_scrape_disabled_reason) || "Server setting torrent_scrape_enabled=false.");
 }
 
 async function _enableTorrentScrapeFromCard() {
@@ -387,9 +387,9 @@ async function _enableTorrentScrapeFromCard() {
   }
   if (typeof setTorrentScrapeEnabledForClient === "function") setTorrentScrapeEnabledForClient(true);
   else {
-    window.ECHOCHAT_CFG = window.ECHOCHAT_CFG || {};
-    window.ECHOCHAT_CFG.torrent_scrape_enabled = true;
-    window.ECHOCHAT_CFG.torrent_scrape_disabled_reason = "";
+    window.HUI_CFG = window.HUI_CFG || {};
+    window.HUI_CFG.torrent_scrape_enabled = true;
+    window.HUI_CFG.torrent_scrape_disabled_reason = "";
   }
   return true;
 }
@@ -504,7 +504,7 @@ function buildTorrentCard(t) {
   const initialStatus = t?.scrape_error || t?.scrape_status || t?.swarm_status || "";
   const swarmWasDeferred = !!t?.swarm_deferred || String(initialStatus || "").toLowerCase() === "pending";
   const fallbackNote = usingFallbackTrackers
-    ? "No trackers were declared, so Echo-Chat is using public fallback trackers and DHT to look up seeds/leechers."
+    ? "No trackers were declared, so Hui Chat is using public fallback trackers and DHT to look up seeds/leechers."
     : "";
   const initialSwarmState = { tracker_count: trList.length, web_seed_count: webSeedCountFromPayload, tracker_source: usingFallbackTrackers ? "public_fallback" : (t?.tracker_source || "torrent") };
   const dhtOnlyLookup = !trList.length && _torrentDhtOn();

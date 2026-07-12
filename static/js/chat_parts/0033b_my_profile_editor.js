@@ -116,7 +116,7 @@ function ecProfileBuildMyProfileEditorNode(ctx = {}) {
     notify_profile_views: profileNotificationSettings.notify_profile_views === true,
     notify_friend_posts: profileNotificationSettings.notify_friend_posts !== false,
   };
-  const serverName = (typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Echo-Chat';
+  const serverName = (typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Hui Chat';
   const card = ecProfileEditorDomEl('div', { className: 'ecProfileCard ecProfileEditorCard ecProfilePublicCard ecProfilePremiumCard ecProfilePageCard ecProfileEditorLikeProfile' });
   card.style.setProperty('--ec-profile-accent', profileAccent);
 
@@ -231,7 +231,7 @@ function ecProfileBuildMyProfileEditorNode(ctx = {}) {
     ecProfileEditorDomEl('input', { id, type: 'checkbox', checked: !!notifySettings[key], dataset: { profileNotifyKey: key } }),
   ]));
   leftRail.appendChild(ecProfileEditorSection('Notifications', [
-    ecProfileEditorDomEl('div', { className: 'ecProfileMeta muted', text: 'Choose which profile/social alerts Echo-Chat should send you.' }),
+    ecProfileEditorDomEl('div', { className: 'ecProfileMeta muted', text: 'Choose which profile/social alerts Hui Chat should send you.' }),
     ...notifyRows,
     ecProfileEditorDomEl('div', { className: 'ecProfileFieldMetaRow' }, [
       ecProfileEditorDomEl('button', { id: 'btnSaveProfileNotifications', className: 'miniBtn secondary', type: 'button', text: 'Save notification settings' }),
@@ -295,7 +295,7 @@ function ecProfileBuildMyProfileEditorNode(ctx = {}) {
     ]),
   ], 'ecProfileEditorMediaSection'));
   const initialDiceBear = detectAvatarPresetSelection(avatarUrl) || {};
-  const diceSeed = initialDiceBear.seed || username || currentUser || 'echo';
+  const diceSeed = initialDiceBear.seed || username || currentUser || 'hui';
   const diceBg = `#${normalizeDiceBearColor(initialDiceBear.backgroundColor || DICEBEAR_DEFAULT_BG)}`;
   const diceRadius = String(normalizeDiceBearBorderRadius(initialDiceBear.borderRadius ?? 50));
   const diceFlip = !!initialDiceBear.flip;
@@ -683,7 +683,7 @@ function renderMyProfileEditor(win, profile = null) {
     flip: !!dicebearFlipInput?.checked,
   });
 
-  const currentDiceBearSeed = () => normalizeDiceBearSeed(dicebearSeedInput?.value || username || currentUser || 'echo');
+  const currentDiceBearSeed = () => normalizeDiceBearSeed(dicebearSeedInput?.value || username || currentUser || 'hui');
 
   const syncDiceBearControlsFromSelection = (selection = null) => {
     if (!selection) return;
@@ -832,7 +832,7 @@ function renderMyProfileEditor(win, profile = null) {
     });
   });
   dicebearUseUsernameBtn?.addEventListener('click', () => {
-    if (dicebearSeedInput) dicebearSeedInput.value = username || currentUser || 'echo';
+    if (dicebearSeedInput) dicebearSeedInput.value = username || currentUser || 'hui';
     presetPage = 0;
     rerenderDiceBearChoices();
   });

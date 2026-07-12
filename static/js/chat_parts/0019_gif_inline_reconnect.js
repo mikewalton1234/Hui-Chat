@@ -146,9 +146,9 @@ function refreshUnloadedGifsInScope(scope = document) {
   return n;
 }
 
-// Console / power-user hook: window.EchoChatRefreshGifs()
-if (!window.EchoChatRefreshGifs) {
-  window.EchoChatRefreshGifs = () => {
+// Console / power-user hook: window.HuiChatRefreshGifs()
+if (!window.HuiChatRefreshGifs) {
+  window.HuiChatRefreshGifs = () => {
     const n = refreshUnloadedGifsInScope(document);
     try { toast(`↻ Retried ${n} GIF(s)`, "info"); } catch {}
     return n;

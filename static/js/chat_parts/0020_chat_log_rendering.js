@@ -250,7 +250,7 @@ function makeChatGroupElement(senderLabel, tsMs, { variant = "generic" } = {}) {
 }
 
 function ecShowSenderEveryMessage(context, variant) {
-  const cfg = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === "object") ? window.ECHOCHAT_CFG : {};
+  const cfg = (window.HUI_CFG && typeof window.HUI_CFG === "object") ? window.HUI_CFG : {};
   const ctx = String(context || "").trim().toLowerCase();
   const v = String(variant || "").trim().toLowerCase();
   if (v === "room" || ctx === "room") return !!cfg.room_show_sender_every_message;

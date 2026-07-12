@@ -1,9 +1,9 @@
 // Audio is blocked until a user gesture (browser autoplay policy).
 // Arm sound after the first pointer interaction to avoid console spam.
 let AUDIO_ARMED = false;
-function armEchoAudio() { AUDIO_ARMED = true; }
-document.addEventListener("pointerdown", armEchoAudio, { once: true });
-document.addEventListener("keydown", armEchoAudio, { once: true });
+function armHuiAudio() { AUDIO_ARMED = true; }
+document.addEventListener("pointerdown", armHuiAudio, { once: true });
+document.addEventListener("keydown", armHuiAudio, { once: true });
 
 // ───────────────────────────────────────────────────────────────────────────────
 // DOM helpers

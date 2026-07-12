@@ -466,8 +466,8 @@ async function handleUserContextAction(action, username, opts = {}) {
   }
   if (action === 'viewWebcam') {
     const room = String(opts?.room || UIState.currentRoom || '').trim();
-    if (typeof echoRequestRemoteCamFromRoomUser === "function") {
-      await echoRequestRemoteCamFromRoomUser(u, room);
+    if (typeof huiRequestRemoteCamFromRoomUser === "function") {
+      await huiRequestRemoteCamFromRoomUser(u, room);
     } else {
       toast("📷 Webcam viewing is not ready yet.", "warn");
     }

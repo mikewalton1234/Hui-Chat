@@ -937,7 +937,7 @@ function _profileBuildPublicProfileNode(ctx) {
   if (custom) meta.appendChild(_profileEl('span', 'muted', `· ${custom}`));
   topText.appendChild(meta);
   if (created) {
-    const serverName = (typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Echo-Chat';
+    const serverName = (typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Hui Chat';
     topText.appendChild(_profileEl('div', 'ecProfileMeta muted', `Joined ${serverName} ${created}`));
   }
   if (!online && lastSeen) topText.appendChild(_profileEl('div', 'ecProfileMeta muted', `Last seen ${lastSeen}`));
@@ -1259,7 +1259,7 @@ function _profileBuildPublicProfileNode(ctx) {
 }
 
 function _profileLayoutStorageKey(username) {
-  const keyUser = String(username || currentUser || 'echo').trim().toLowerCase() || 'echo';
+  const keyUser = String(username || currentUser || 'hui').trim().toLowerCase() || 'hui';
   return `ecProfileLayoutOrder:${keyUser}`;
 }
 
@@ -3512,7 +3512,7 @@ function openProfileWindow(username, opts = {}) {
         log.appendChild(_profileBuildBasicProfileNode(p, u, { note: 'Profile loaded. Building full profile view…' }));
         _profileForceTopScroll(log);
       } catch (basicErr) {
-        console.warn(`${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Echo-Chat')} basic profile renderer failed`, basicErr);
+        console.warn(`${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Hui Chat')} basic profile renderer failed`, basicErr);
       }
 
       const online = !!p.online;
@@ -3597,11 +3597,11 @@ function openProfileWindow(username, opts = {}) {
           openProfileWindow(u, { fitMode: String(win?.dataset?.profileOpenMode || 'public') });
         });
       } catch (renderErr) {
-        console.error(`${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Echo-Chat')} profile renderer failed; showing safe profile fallback`, renderErr);
+        console.error(`${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Hui Chat')} profile renderer failed; showing safe profile fallback`, renderErr);
         _profileClearNode(log);
         _profileForceTopScroll(log);
         log.appendChild(_profileBuildBasicProfileNode(p, u, {
-          error: `Full profile view hit a browser-side render error, so ${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Echo-Chat')} showed the safe profile view instead.`,
+          error: `Full profile view hit a browser-side render error, so ${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Hui Chat')} showed the safe profile view instead.`,
         }));
         _profileForceTopScroll(log);
         _profileReleaseTopLock(win, topLockToken, 0);
@@ -3624,7 +3624,7 @@ function openProfileWindow(username, opts = {}) {
         if (photosRoot) _profileReplaceTextBlock(photosRoot, 'ecProfileMutedBlock', 'Could not load photos yet.');
       }
     } catch (err) {
-      console.error(`${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Echo-Chat')} profile load crashed`, err);
+      console.error(`${((typeof SERVER_NAME !== 'undefined' && SERVER_NAME) ? String(SERVER_NAME) : 'Hui Chat')} profile load crashed`, err);
       showFailure('Profile crashed while rendering', String(err?.message || err || 'profile_render_exception'));
       _profileReleaseTopLock(win, topLockToken, 0);
     }

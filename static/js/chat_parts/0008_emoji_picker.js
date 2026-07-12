@@ -27,7 +27,7 @@ function insertAtCursor(inputEl, text) {
 function ecVersionedStaticUrl(url) {
   const raw = String(url || "").trim();
   if (!raw) return raw;
-  const version = String(window.ECHOCHAT_APP_VERSION || "").trim();
+  const version = String(window.HUI_APP_VERSION || "").trim();
   if (!version) return raw;
   try {
     const u = new URL(raw, window.location.origin);
@@ -76,7 +76,7 @@ window.ecApplyEmoticonSizePrefs = ecApplyEmoticonSizePrefs;
 
 
 function ecMessageEmoticonLimit(value = undefined) {
-  const cfg = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === "object") ? window.ECHOCHAT_CFG : {};
+  const cfg = (window.HUI_CFG && typeof window.HUI_CFG === "object") ? window.HUI_CFG : {};
   const raw = value ?? cfg.max_emoticons_per_message ?? cfg.max_message_emoticons ?? 15;
   const n = parseInt(raw, 10);
   if (Number.isNaN(n)) return 15;
@@ -448,14 +448,14 @@ function rebuildCodeEmoticonIndex(entries) {
 }
 
 function ecEmoticonBootPreloadEnabled() {
-  const cfg = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === "object") ? window.ECHOCHAT_CFG : {};
+  const cfg = (window.HUI_CFG && typeof window.HUI_CFG === "object") ? window.HUI_CFG : {};
   if (cfg.emoticons_boot_preload_enabled === false) return false;
   if (cfg.emoticons_preload_enabled === false) return false;
   return true;
 }
 
 function ecEmoticonBootPreloadLimit() {
-  const cfg = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === "object") ? window.ECHOCHAT_CFG : {};
+  const cfg = (window.HUI_CFG && typeof window.HUI_CFG === "object") ? window.HUI_CFG : {};
   const raw = cfg.emoticons_boot_preload_limit ?? cfg.emoticons_preload_limit ?? 180;
   const n = parseInt(raw, 10);
   if (Number.isNaN(n)) return 180;
@@ -465,8 +465,8 @@ function ecEmoticonBootPreloadLimit() {
 }
 
 function ecEmoticonBootPreloadConcurrency() {
-  const cfg = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === "object") ? window.ECHOCHAT_CFG : {};
-  const device = (window.ECHOCHAT_DEVICE && typeof window.ECHOCHAT_DEVICE === "object") ? window.ECHOCHAT_DEVICE : {};
+  const cfg = (window.HUI_CFG && typeof window.HUI_CFG === "object") ? window.HUI_CFG : {};
+  const device = (window.HUI_DEVICE && typeof window.HUI_DEVICE === "object") ? window.HUI_DEVICE : {};
   const fallback = device.is_phone || device.is_mobile || String(cfg.device_profile || "").toLowerCase() === "phone" ? 2 : 4;
   const n = parseInt(cfg.emoticons_boot_preload_concurrency ?? cfg.emoticons_preload_concurrency ?? fallback, 10);
   if (Number.isNaN(n)) return fallback;

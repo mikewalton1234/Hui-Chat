@@ -1,17 +1,17 @@
-// Echo webcam/media engine — built-in WebRTC, no external media server SDK.
+// Hui webcam/media engine — built-in WebRTC, no external media server SDK.
 // This file intentionally keeps its current manifest filename so upgrades do not
-// break stale deployments, but the runtime engine is EchoMedia/WebRTC.
+// break stale deployments, but the runtime engine is HuiMedia/WebRTC.
 (function () {
-  const CAM_PROFILES = (ECHOCHAT_CFG.webcam_quality_profiles && typeof ECHOCHAT_CFG.webcam_quality_profiles === "object")
-    ? ECHOCHAT_CFG.webcam_quality_profiles
+  const CAM_PROFILES = (HUI_CFG.webcam_quality_profiles && typeof HUI_CFG.webcam_quality_profiles === "object")
+    ? HUI_CFG.webcam_quality_profiles
     : {
         low: { label: "Low data / compatible", width: 320, height: 180, frameRate: 12, max_bitrate: 160000, preferred_codecs: ["H264", "VP8", "VP9"], content_hint: "detail", degradation_preference: "maintain-framerate" },
         balanced: { label: "Balanced / compatible", width: 640, height: 360, frameRate: 18, max_bitrate: 550000, preferred_codecs: ["H264", "VP8", "VP9"], content_hint: "motion", degradation_preference: "balanced" },
         high: { label: "High quality", width: 1280, height: 720, frameRate: 24, max_bitrate: 1500000, preferred_codecs: ["H264", "VP8", "VP9", "AV1"], content_hint: "motion", degradation_preference: "balanced" },
       };
 
-  const ECHO_MEDIA = {
-    echoRoom: "",
+  const HUI_MEDIA = {
+    huiRoom: "",
     voiceDesired: false,
     camDesired: false,
     comboDesired: false,
@@ -44,29 +44,32 @@
     return `${String(name || "media").trim().toLowerCase()}::${String(room || "").trim().toLowerCase()}::${String(peer || "").trim().toLowerCase()}`;
   }
 
-  function echoMediaIsBusy(name, room = localRoomName(), peer = "") {
-    return !!(ECHO_MEDIA.actionLocks && ECHO_MEDIA.actionLocks.has(mediaActionKey(name, room, peer)));
+  function huiMediaIsBusy(name, room = localRoomName(), peer = "") {
+    return !!(HUI_MEDIA.actionLocks && HUI_MEDIA.actionLocks.has(mediaActionKey(name, room, peer)));
   }
 
-  function echoMediaSetBusy(name, busy, room = localRoomName(), peer = "") {
+  function huiMediaSetBusy(name, busy, room = localRoomName(), peer = "") {
     const key = mediaActionKey(name, room, peer);
-    if (!ECHO_MEDIA.actionLocks) ECHO_MEDIA.actionLocks = new Set();
-    if (busy) ECHO_MEDIA.actionLocks.add(key);
-    else ECHO_MEDIA.actionLocks.delete(key);
-    try { echoCamRefreshUiState(); } catch {}
+    if (!HUI_MEDIA.actionLocks) HUI_MEDIA.actionLocks = new Set();
+    if (busy) HUI_MEDIA.actionLocks.add(key);
+    else HUI_MEDIA.actionLocks.delete(key);
+    try { huiCamRefreshUiState(); } catch {}
   }
 
-  async function echoMediaWithBusy(name, room, peer, fn) {
-    if (echoMediaIsBusy(name, room, peer)) return { success: false, busy: true, error: "media_action_busy" };
-    echoMediaSetBusy(name, true, room, peer);
+  async function huiMediaWithBusy(name, room, peer, fn) {
+    if (huiMediaIsBusy(name, room, peer)) return { success: false, busy: true, error: "media_action_busy" };
+    huiMediaSetBusy(name, true, room, peer);
     try { return await fn(); }
-    finally { echoMediaSetBusy(name, false, room, peer); }
+    finally { huiMediaSetBusy(name, false, room, peer); }
   }
 
-  function echoSetButtonBusy(btn, busy, label) {
+  function huiSetButtonBusy(btn, busy, label) {
     if (!btn) return;
     if (busy) {
       if (!btn.dataset.ecBusyOriginalText) btn.dataset.ecBusyOriginalText = btn.textContent || "";
+      if (btn.dataset.ecBusyOriginalDisabled === undefined) {
+        btn.dataset.ecBusyOriginalDisabled = btn.disabled ? "1" : "0";
+      }
       if (label) btn.textContent = label;
       btn.classList.add("isBusy");
       btn.setAttribute("aria-busy", "true");
@@ -74,33 +77,37 @@
     } else {
       btn.classList.remove("isBusy");
       btn.removeAttribute("aria-busy");
+      if (btn.dataset.ecBusyOriginalDisabled !== undefined) {
+        btn.disabled = btn.dataset.ecBusyOriginalDisabled === "1";
+      }
       if (btn.dataset.ecBusyOriginalText && !label) btn.textContent = btn.dataset.ecBusyOriginalText;
       delete btn.dataset.ecBusyOriginalText;
+      delete btn.dataset.ecBusyOriginalDisabled;
     }
   }
 
   function readSavedQuality() {
     try {
-      const v = Settings && Settings.get ? Settings.get("echoWebcamQuality", null) : null;
+      const v = Settings && Settings.get ? Settings.get("huiWebcamQuality", null) : null;
       if (v && CAM_PROFILES[String(v).toLowerCase()]) return String(v).toLowerCase();
     } catch {}
-    const cfg = String((ECHOCHAT_CFG && ECHOCHAT_CFG.webcam_quality) || (ECHOCHAT_CFG && ECHOCHAT_CFG.echo_webcam_quality) || "balanced").toLowerCase();
+    const cfg = String((HUI_CFG && HUI_CFG.webcam_quality) || (HUI_CFG && HUI_CFG.hui_webcam_quality) || "balanced").toLowerCase();
     return CAM_PROFILES[cfg] ? cfg : "balanced";
   }
 
   function saveQuality(name) {
     const q = CAM_PROFILES[String(name || "").toLowerCase()] ? String(name).toLowerCase() : "balanced";
-    ECHO_MEDIA.quality = q;
-    try { Settings && Settings.set && Settings.set("echoWebcamQuality", q); } catch {}
+    HUI_MEDIA.quality = q;
+    try { Settings && Settings.set && Settings.set("huiWebcamQuality", q); } catch {}
     return q;
   }
 
-  function profile(name = ECHO_MEDIA.quality) {
+  function profile(name = HUI_MEDIA.quality) {
     const key = String(name || "balanced").toLowerCase();
     return CAM_PROFILES[key] || CAM_PROFILES.balanced || CAM_PROFILES.low;
   }
 
-  ECHO_MEDIA.quality = readSavedQuality();
+  HUI_MEDIA.quality = readSavedQuality();
 
   function isLocalhostLikeOrigin() {
     try {
@@ -112,15 +119,15 @@
   }
 
   function webcamConfigStatus() {
-    const cfg = (ECHOCHAT_CFG && typeof ECHOCHAT_CFG === "object") ? ECHOCHAT_CFG : {};
+    const cfg = (HUI_CFG && typeof HUI_CFG === "object") ? HUI_CFG : {};
     const features = (cfg.features && typeof cfg.features === "object") ? cfg.features : {};
-    const policy = echoCamPolicy();
+    const policy = huiCamPolicy();
     if (policy.webcam_approval_mode === "disabled") {
       return { ok: false, reason: "Webcam is disabled by the server webcam policy." };
     }
-    if (cfg.webcam_enabled === false || cfg.echo_webcam_enabled === false) {
+    if (cfg.webcam_enabled === false || cfg.hui_webcam_enabled === false) {
       const mode = String(cfg.av_mode || cfg.av_requested_mode || "").toLowerCase();
-      const suffix = mode === "standard" ? " Admin → Echo Media is set to Standard voice only." : "";
+      const suffix = mode === "standard" ? " Admin → Hui Media is set to Standard voice only." : "";
       return { ok: false, reason: `Webcam is disabled by server settings.${suffix}` };
     }
     if (features.webcam === false) {
@@ -161,17 +168,17 @@
   }
 
   function localRoomName() {
-    return String(ECHO_MEDIA.echoRoom || (VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.name) || UIState.currentRoom || UIState.roomEmbedRoom || "").trim();
+    return String(HUI_MEDIA.huiRoom || (VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.name) || UIState.currentRoom || UIState.roomEmbedRoom || "").trim();
   }
 
   function updateStatus(text) {
-    if (ECHO_MEDIA.status) ECHO_MEDIA.status.textContent = text || "";
-    try { echoCamRefreshDiagnostics(); } catch {}
+    if (HUI_MEDIA.status) HUI_MEDIA.status.textContent = text || "";
+    try { huiCamRefreshDiagnostics(); } catch {}
   }
 
 
-  function echoCamPolicy() {
-    const cfg = (ECHOCHAT_CFG && typeof ECHOCHAT_CFG === "object") ? ECHOCHAT_CFG : {};
+  function huiCamPolicy() {
+    const cfg = (HUI_CFG && typeof HUI_CFG === "object") ? HUI_CFG : {};
     const policy = (cfg.webcam_policy && typeof cfg.webcam_policy === "object") ? cfg.webcam_policy : {};
     const raw = String(cfg.webcam_approval_mode || policy.webcam_approval_mode || "owner_approval").trim().toLowerCase().replace(/-/g, "_");
     const mode = (raw === "open" || raw === "public" || raw === "everyone") ? "open"
@@ -184,81 +191,81 @@
     };
   }
 
-  function echoCamKey(room, username) {
+  function huiCamKey(room, username) {
     return `${String(room || "").trim()}::${String(username || "").trim()}`;
   }
 
-  function echoCamViewerRequested(room, owner) {
-    return ECHO_MEDIA.requestedViewers.has(echoCamKey(room, owner));
+  function huiCamViewerRequested(room, owner) {
+    return HUI_MEDIA.requestedViewers.has(huiCamKey(room, owner));
   }
 
-  function echoCamViewerApproved(room, viewer) {
-    return ECHO_MEDIA.approvedViewers.has(echoCamKey(room, viewer));
+  function huiCamViewerApproved(room, viewer) {
+    return HUI_MEDIA.approvedViewers.has(huiCamKey(room, viewer));
   }
 
-  function echoCamSetViewerApproved(room, viewer, approved) {
-    const key = echoCamKey(room, viewer);
+  function huiCamSetViewerApproved(room, viewer, approved) {
+    const key = huiCamKey(room, viewer);
     if (!String(viewer || "").trim() || !String(room || "").trim()) return false;
-    if (approved) ECHO_MEDIA.approvedViewers.add(key);
-    else ECHO_MEDIA.approvedViewers.delete(key);
+    if (approved) HUI_MEDIA.approvedViewers.add(key);
+    else HUI_MEDIA.approvedViewers.delete(key);
     return true;
   }
 
-  function echoCamRequestKey(room, viewer) {
-    return echoCamKey(room, viewer).toLowerCase();
+  function huiCamRequestKey(room, viewer) {
+    return huiCamKey(room, viewer).toLowerCase();
   }
 
-  function echoCamViewerRoomKey(room) {
+  function huiCamViewerRoomKey(room) {
     return String(room || localRoomName()).trim();
   }
 
-  function echoCamViewerSetForRoom(room) {
-    const key = echoCamViewerRoomKey(room);
+  function huiCamViewerSetForRoom(room) {
+    const key = huiCamViewerRoomKey(room);
     if (!key) return new Set();
-    if (!ECHO_MEDIA.activeViewers.has(key)) ECHO_MEDIA.activeViewers.set(key, new Set());
-    return ECHO_MEDIA.activeViewers.get(key);
+    if (!HUI_MEDIA.activeViewers.has(key)) HUI_MEDIA.activeViewers.set(key, new Set());
+    return HUI_MEDIA.activeViewers.get(key);
   }
 
-  function echoCamViewerSummary(room) {
-    const key = echoCamViewerRoomKey(room);
-    const viewers = key ? Array.from(ECHO_MEDIA.activeViewers.get(key) || []).filter(Boolean).sort() : [];
+  function huiCamViewerSummary(room) {
+    const key = huiCamViewerRoomKey(room);
+    const viewers = key ? Array.from(HUI_MEDIA.activeViewers.get(key) || []).filter(Boolean).sort() : [];
     return { viewers, viewerCount: viewers.length };
   }
 
-  function echoCamUpdateLocalViewerInfo(room) {
-    if (!ECHO_MEDIA.localTile || !ECHO_MEDIA.localTile._echoInfo) return;
-    const summary = echoCamViewerSummary(room);
-    if (!ECHO_MEDIA.camDesired && !ECHO_MEDIA.camEnabled) {
-      ECHO_MEDIA.localTile._echoInfo.textContent = "Local camera preview";
+  function huiCamUpdateLocalViewerInfo(room) {
+    if (!HUI_MEDIA.localTile || !HUI_MEDIA.localTile._huiInfo) return;
+    const summary = huiCamViewerSummary(room);
+    if (!HUI_MEDIA.camDesired && !HUI_MEDIA.camEnabled) {
+      HUI_MEDIA.localTile._huiInfo.textContent = "Local camera preview";
       return;
     }
-    ECHO_MEDIA.localTile._echoInfo.textContent = summary.viewerCount
+    HUI_MEDIA.localTile._huiInfo.textContent = summary.viewerCount
       ? `Viewing: ${summary.viewers.join(", ")}`
       : "No active webcam viewers";
-    try { ECHO_MEDIA.localTile.dataset.viewerCount = String(summary.viewerCount); } catch {}
+    try { HUI_MEDIA.localTile.dataset.viewerCount = String(summary.viewerCount); } catch {}
   }
 
-  function echoCamSetActiveViewing(room, viewer, viewing) {
-    room = echoCamViewerRoomKey(room);
+  function huiCamSetActiveViewing(room, viewer, viewing) {
+    room = huiCamViewerRoomKey(room);
     viewer = String(viewer || "").trim();
-    if (!room || !viewer || viewer === String(currentUser || "").trim()) return echoCamViewerSummary(room);
-    const set = echoCamViewerSetForRoom(room);
+    if (!room || !viewer || viewer === String(currentUser || "").trim()) return huiCamViewerSummary(room);
+    const set = huiCamViewerSetForRoom(room);
     if (viewing) set.add(viewer);
     else set.delete(viewer);
-    echoCamUpdateLocalViewerInfo(room);
-    return echoCamViewerSummary(room);
+    huiCamUpdateLocalViewerInfo(room);
+    return huiCamViewerSummary(room);
   }
 
-  function echoCamReplaceActiveViewers(room, viewers) {
-    room = echoCamViewerRoomKey(room);
-    if (!room) return echoCamViewerSummary(room);
+  function huiCamReplaceActiveViewers(room, viewers) {
+    room = huiCamViewerRoomKey(room);
+    if (!room) return huiCamViewerSummary(room);
     const set = new Set((Array.isArray(viewers) ? viewers : []).map(v => String(v || "").trim()).filter(v => v && v !== String(currentUser || "").trim()));
-    ECHO_MEDIA.activeViewers.set(room, set);
-    echoCamUpdateLocalViewerInfo(room);
-    return echoCamViewerSummary(room);
+    HUI_MEDIA.activeViewers.set(room, set);
+    huiCamUpdateLocalViewerInfo(room);
+    return huiCamViewerSummary(room);
   }
 
-  function echoCamRenderAlertRequests(opts = {}) {
+  function huiCamRenderAlertRequests(opts = {}) {
     try {
       if (typeof renderAlertsInviteListInto === "function") {
         renderAlertsInviteListInto($("railAlertsList"), UIState.groupInvites, UIState.roomInvites, { openRail: true });
@@ -270,13 +277,13 @@
     } catch {}
   }
 
-  function echoCamUpsertIncomingRequest(room, viewer, policy = null) {
+  function huiCamUpsertIncomingRequest(room, viewer, policy = null) {
     room = String(room || localRoomName()).trim();
     viewer = String(viewer || "").trim();
     if (!room || !viewer || viewer === String(currentUser || "").trim()) return null;
     if (!Array.isArray(UIState.webcamRequests)) UIState.webcamRequests = [];
-    const key = echoCamRequestKey(room, viewer);
-    const existing = UIState.webcamRequests.find((req) => echoCamRequestKey(req && req.room, req && req.viewer) === key);
+    const key = huiCamRequestKey(room, viewer);
+    const existing = UIState.webcamRequests.find((req) => huiCamRequestKey(req && req.room, req && req.viewer) === key);
     const req = existing || { room, viewer, requested_at: new Date().toISOString() };
     req.room = room;
     req.viewer = viewer;
@@ -284,56 +291,56 @@
     req.requested_at = req.requested_at || new Date().toISOString();
     req.updated_at = new Date().toISOString();
     if (!existing) UIState.webcamRequests.unshift(req);
-    echoCamRenderAlertRequests({ open: true });
+    huiCamRenderAlertRequests({ open: true });
     return req;
   }
 
-  function echoCamRemoveIncomingRequest(room, viewer) {
+  function huiCamRemoveIncomingRequest(room, viewer) {
     room = String(room || localRoomName()).trim();
     viewer = String(viewer || "").trim();
     if (!Array.isArray(UIState.webcamRequests) || !room || !viewer) return false;
-    const key = echoCamRequestKey(room, viewer);
+    const key = huiCamRequestKey(room, viewer);
     const before = UIState.webcamRequests.length;
-    UIState.webcamRequests = UIState.webcamRequests.filter((req) => echoCamRequestKey(req && req.room, req && req.viewer) !== key);
+    UIState.webcamRequests = UIState.webcamRequests.filter((req) => huiCamRequestKey(req && req.room, req && req.viewer) !== key);
     if (UIState.webcamRequests.length !== before) {
-      echoCamRenderAlertRequests({ open: false });
+      huiCamRenderAlertRequests({ open: false });
       return true;
     }
     return false;
   }
 
-  function echoCamClearIncomingRequestsForRoom(room) {
+  function huiCamClearIncomingRequestsForRoom(room) {
     room = String(room || localRoomName()).trim();
     if (!Array.isArray(UIState.webcamRequests) || !room) return false;
     const before = UIState.webcamRequests.length;
     UIState.webcamRequests = UIState.webcamRequests.filter((req) => String(req && req.room || "") !== room);
-    if (UIState.webcamRequests.length !== before) echoCamRenderAlertRequests({ open: false });
+    if (UIState.webcamRequests.length !== before) huiCamRenderAlertRequests({ open: false });
     return UIState.webcamRequests.length !== before;
   }
 
-  function echoCamCanSendToPeer(room, peer) {
-    if (!ECHO_MEDIA.camDesired || !ECHO_MEDIA.camEnabled) return false;
+  function huiCamCanSendToPeer(room, peer) {
+    if (!HUI_MEDIA.camDesired || !HUI_MEDIA.camEnabled) return false;
     if (!peer || peer === String(currentUser || "")) return false;
-    const policy = echoCamPolicy();
+    const policy = huiCamPolicy();
     if (policy.webcam_approval_mode === "disabled") return false;
     // Important privacy rule: even "open" mode means anyone may request/join
     // without owner approval; it does NOT mean every room user is auto-subscribed.
-    return echoCamViewerApproved(room, peer);
+    return huiCamViewerApproved(room, peer);
   }
 
-  function echoCamCanReceiveFromPeer(room, owner) {
+  function huiCamCanReceiveFromPeer(room, owner) {
     if (!owner || owner === String(currentUser || "")) return false;
-    const policy = echoCamPolicy();
+    const policy = huiCamPolicy();
     if (policy.webcam_approval_mode === "disabled") return false;
-    return echoCamViewerRequested(room, owner);
+    return huiCamViewerRequested(room, owner);
   }
 
   function ensurePanel() {
-    if (ECHO_MEDIA.panel && document.body.contains(ECHO_MEDIA.panel)) return ECHO_MEDIA.panel;
+    if (HUI_MEDIA.panel && document.body.contains(HUI_MEDIA.panel)) return HUI_MEDIA.panel;
 
     const panel = document.createElement("div");
     panel.className = "ym-avPanel";
-    panel.id = "echoWebcamPanel";
+    panel.id = "huiWebcamPanel";
     panel.setAttribute("role", "dialog");
     panel.setAttribute("aria-label", "Voice and webcam panel");
 
@@ -374,11 +381,11 @@
       opt.textContent = val && val.label ? String(val.label) : key;
       select.appendChild(opt);
     }
-    select.value = ECHO_MEDIA.quality;
+    select.value = HUI_MEDIA.quality;
     select.addEventListener("change", async () => {
       const q = saveQuality(select.value);
-      try { await echoCamApplyQualityToLocalTrack(); } catch {}
-      try { echoCamApplyQualityToAllSenders(); } catch {}
+      try { await huiCamApplyQualityToLocalTrack(); } catch {}
+      try { huiCamApplyQualityToAllSenders(); } catch {}
       safeToast(`📷 Webcam quality set to ${profile(q).label || q}`, "info", 2200);
     });
     qualityField.append(qText, select);
@@ -393,11 +400,11 @@
     grid.className = "ym-avGrid";
 
     panel.append(top, deviceRow, diagnostics, grid);
-    ECHO_MEDIA.diagnostics = diagnostics;
+    HUI_MEDIA.diagnostics = diagnostics;
     document.body.appendChild(panel);
-    ECHO_MEDIA.panel = panel;
-    ECHO_MEDIA.grid = grid;
-    ECHO_MEDIA.status = status;
+    HUI_MEDIA.panel = panel;
+    HUI_MEDIA.grid = grid;
+    HUI_MEDIA.status = status;
     return panel;
   }
 
@@ -405,6 +412,23 @@
     const panel = ensurePanel();
     panel.classList.remove("hidden");
     return panel;
+  }
+
+  function huiCamDestroyPanelIfIdle(opts = {}) {
+    const force = !!(opts && opts.force);
+    const localTileLive = !!(HUI_MEDIA.localTile && document.body.contains(HUI_MEDIA.localTile));
+    const remoteTileLive = Array.from(HUI_MEDIA.remoteTiles.values()).some((tile) => tile && document.body.contains(tile));
+    const mediaStillVisible = localTileLive || remoteTileLive || !!HUI_MEDIA.camDesired || !!HUI_MEDIA.camEnabled;
+    if (!force && mediaStillVisible) return false;
+    const panel = HUI_MEDIA.panel;
+    if (panel) {
+      try { panel.remove(); } catch { try { panel.classList.add("hidden"); } catch {} }
+    }
+    HUI_MEDIA.panel = null;
+    HUI_MEDIA.grid = null;
+    HUI_MEDIA.status = null;
+    HUI_MEDIA.diagnostics = null;
+    return true;
   }
 
   function makeTile(username, label, local = false) {
@@ -446,68 +470,70 @@
     stopBtn.title = local ? "Turn off your webcam" : "Stop viewing this webcam";
     stopBtn.addEventListener("click", () => {
       try {
-        if (local) echoCamDisable("Webcam disabled", { keepRoom: !!ECHO_MEDIA.voiceDesired });
-        else echoCamStopViewing(username, localRoomName());
+        if (local) huiCamDisable("Webcam disabled", { keepRoom: !!HUI_MEDIA.voiceDesired });
+        else huiCamStopViewing(username, localRoomName());
       } catch (e) { safeToast(`📷 ${e?.message || e}`, "warn", 4200); }
     });
     actions.appendChild(stopBtn);
     controls.appendChild(actions);
-    tile._echoStopBtn = stopBtn;
+    tile._huiStopBtn = stopBtn;
 
     tile.append(head, media, controls);
-    tile._echoVideo = video;
-    tile._echoInfo = info;
-    ECHO_MEDIA.grid.appendChild(tile);
+    tile._huiVideo = video;
+    tile._huiInfo = info;
+    HUI_MEDIA.grid.appendChild(tile);
     return tile;
   }
 
   function attachLocalPreview(stream) {
     if (!stream) return;
-    const tile = ECHO_MEDIA.localTile || makeTile(currentUser || "me", `${currentUser || "Me"} camera`, true);
-    ECHO_MEDIA.localTile = tile;
-    try { tile._echoVideo.srcObject = stream; } catch {}
-    echoCamUpdateLocalViewerInfo(localRoomName());
+    const tile = HUI_MEDIA.localTile || makeTile(currentUser || "me", `${currentUser || "Me"} camera`, true);
+    HUI_MEDIA.localTile = tile;
+    try { tile._huiVideo.srcObject = stream; } catch {}
+    huiCamUpdateLocalViewerInfo(localRoomName());
     return tile;
   }
 
-  function echoCamAttachRemoteVideo(room, peer, stream) {
+  function huiCamAttachRemoteVideo(room, peer, stream) {
     if (!room || localRoomName() && String(room) !== localRoomName()) return null;
     const key = String(peer || "").trim();
     if (!key) return null;
-    if (!echoCamCanReceiveFromPeer(room, key)) {
+    if (!huiCamCanReceiveFromPeer(room, key)) {
       try { if (stream && stream.getVideoTracks) stream.getVideoTracks().forEach(t => { t.enabled = false; }); } catch {}
       return null;
     }
-    let tile = ECHO_MEDIA.remoteTiles.get(key);
+    let tile = HUI_MEDIA.remoteTiles.get(key);
     if (!tile || !document.body.contains(tile)) {
       tile = makeTile(key, `${key} camera`, false);
-      ECHO_MEDIA.remoteTiles.set(key, tile);
+      HUI_MEDIA.remoteTiles.set(key, tile);
     }
-    try { tile._echoVideo.srcObject = stream; } catch {}
-    if (tile._echoInfo) tile._echoInfo.textContent = `Receiving ${key}'s webcam`;
+    try { tile._huiVideo.srcObject = stream; } catch {}
+    if (tile._huiInfo) tile._huiInfo.textContent = `Receiving ${key}'s webcam`;
     updateStatus(`Receiving webcam from ${key}`);
     showPanel();
-    try { echoCamRefreshDiagnostics(); } catch {}
+    try { huiCamRefreshDiagnostics(); } catch {}
     return tile;
   }
 
-  function echoCamRemoveRemoteVideo(peer) {
+  function huiCamRemoveRemoteVideo(peer) {
     const key = String(peer || "").trim();
     if (!key) return;
-    const tile = ECHO_MEDIA.remoteTiles.get(key);
+    const tile = HUI_MEDIA.remoteTiles.get(key);
     if (tile) {
-      try { tile._echoVideo.srcObject = null; } catch {}
+      try { tile._huiVideo.srcObject = null; } catch {}
       try { tile.remove(); } catch {}
     }
-    ECHO_MEDIA.remoteTiles.delete(key);
-    try { echoCamRefreshDiagnostics(); } catch {}
+    HUI_MEDIA.remoteTiles.delete(key);
+    try { huiCamRefreshDiagnostics(); } catch {}
+    try { huiCamDestroyPanelIfIdle(); } catch {}
   }
 
   function clearRemoteVideos() {
-    for (const key of Array.from(ECHO_MEDIA.remoteTiles.keys())) echoCamRemoveRemoteVideo(key);
+    for (const key of Array.from(HUI_MEDIA.remoteTiles.keys())) huiCamRemoveRemoteVideo(key);
+    try { huiCamDestroyPanelIfIdle(); } catch {}
   }
 
-  function videoConstraints(profileName = ECHO_MEDIA.quality) {
+  function videoConstraints(profileName = HUI_MEDIA.quality) {
     const p = profile(profileName);
     const width = Number(p.width || 640);
     const height = Number(p.height || 360);
@@ -552,7 +578,7 @@
   }
 
   function cameraOpenAttempts() {
-    const preferred = String(ECHO_MEDIA.quality || "balanced").toLowerCase();
+    const preferred = String(HUI_MEDIA.quality || "balanced").toLowerCase();
     const order = [];
     [preferred, "balanced", "low"].forEach((q) => {
       if (CAM_PROFILES[q] && !order.includes(q)) order.push(q);
@@ -576,38 +602,38 @@
   }
 
   async function ensureCamera() {
-    if (ECHO_MEDIA.camStream) return ECHO_MEDIA.camStream;
+    if (HUI_MEDIA.camStream) return HUI_MEDIA.camStream;
     if (!webcamAvailable()) throw new Error(webcamUnavailableReason());
     let lastErr = null;
-    const requestedQuality = ECHO_MEDIA.quality;
-    let chosenQuality = ECHO_MEDIA.quality;
+    const requestedQuality = HUI_MEDIA.quality;
+    let chosenQuality = HUI_MEDIA.quality;
     if (!(await browserHasVideoInput())) {
       lastErr = makeCameraError("NotFoundError", "No video input device is available.");
-      ECHO_MEDIA.lastCameraError = describeCameraError(lastErr);
-      throw new Error(ECHO_MEDIA.lastCameraError);
+      HUI_MEDIA.lastCameraError = describeCameraError(lastErr);
+      throw new Error(HUI_MEDIA.lastCameraError);
     }
     for (const attempt of cameraOpenAttempts()) {
       try {
         updateStatus(attempt.quality === "browser-default" ? "Opening webcam with browser defaults…" : `Opening webcam · ${profile(attempt.quality).label || attempt.quality}…`);
         const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: attempt.constraints });
-        if (attempt.quality !== "browser-default" && attempt.quality !== ECHO_MEDIA.quality) chosenQuality = saveQuality(attempt.quality);
-        else chosenQuality = ECHO_MEDIA.quality;
+        if (attempt.quality !== "browser-default" && attempt.quality !== HUI_MEDIA.quality) chosenQuality = saveQuality(attempt.quality);
+        else chosenQuality = HUI_MEDIA.quality;
         const track = stream.getVideoTracks()[0];
         if (track) {
           try { track.contentHint = String(profile(chosenQuality).content_hint || "motion"); } catch {}
           track.addEventListener("ended", () => {
-            try { echoCamDisable("Camera stopped", { keepRoom: true }); } catch {}
+            try { huiCamDisable("Camera stopped", { keepRoom: true }); } catch {}
           });
         }
-        ECHO_MEDIA.lastCameraError = "";
-        ECHO_MEDIA.lastCameraQuality = attempt.quality === "browser-default" ? "browser-default" : String(chosenQuality || attempt.quality);
+        HUI_MEDIA.lastCameraError = "";
+        HUI_MEDIA.lastCameraQuality = attempt.quality === "browser-default" ? "browser-default" : String(chosenQuality || attempt.quality);
         if (attempt.quality !== requestedQuality && attempt.quality !== "browser-default") {
           safeToast(`📷 Requested quality was not supported; using ${profile(attempt.quality).label || attempt.quality}.`, "warn", 3600);
         } else if (attempt.quality === "browser-default") {
           safeToast("📷 Requested webcam constraints failed; using browser default camera settings.", "warn", 3600);
         }
-        ECHO_MEDIA.camStream = stream;
-        ECHO_MEDIA.camEnabled = true;
+        HUI_MEDIA.camStream = stream;
+        HUI_MEDIA.camEnabled = true;
         attachLocalPreview(stream);
         return stream;
       } catch (err) {
@@ -615,12 +641,12 @@
         if (isFatalCameraError(err)) break;
       }
     }
-    ECHO_MEDIA.lastCameraError = describeCameraError(lastErr);
-    throw new Error(ECHO_MEDIA.lastCameraError || "Camera blocked");
+    HUI_MEDIA.lastCameraError = describeCameraError(lastErr);
+    throw new Error(HUI_MEDIA.lastCameraError || "Camera blocked");
   }
 
-  async function echoCamApplyQualityToLocalTrack() {
-    const track = ECHO_MEDIA.camStream && ECHO_MEDIA.camStream.getVideoTracks && ECHO_MEDIA.camStream.getVideoTracks()[0];
+  async function huiCamApplyQualityToLocalTrack() {
+    const track = HUI_MEDIA.camStream && HUI_MEDIA.camStream.getVideoTracks && HUI_MEDIA.camStream.getVideoTracks()[0];
     if (!track) return;
     try { track.contentHint = String(profile().content_hint || "motion"); } catch {}
     if (track.applyConstraints) {
@@ -632,7 +658,7 @@
   }
 
   function codecStrategy() {
-    const raw = String((ECHOCHAT_CFG && ECHOCHAT_CFG.webcam_codec_strategy) || "prefer-compatible").toLowerCase().replace(/_/g, "-");
+    const raw = String((HUI_CFG && HUI_CFG.webcam_codec_strategy) || "prefer-compatible").toLowerCase().replace(/_/g, "-");
     if (raw === "prefer-efficient" || raw === "efficient") return "prefer-efficient";
     if (raw === "prefer-quality" || raw === "quality") return "prefer-quality";
     return "prefer-compatible";
@@ -685,69 +711,69 @@
     } catch {}
   }
 
-  function echoCamApplyQualityToAllSenders() {
+  function huiCamApplyQualityToAllSenders() {
     try {
       if (!VOICE_STATE || !VOICE_STATE.room || !VOICE_STATE.room.peers) return;
       VOICE_STATE.room.peers.forEach((obj) => {
         if (!obj || !obj.pc) return;
-        if (obj.echoVideoTransceiver) applyCodecPreference(obj.echoVideoTransceiver);
-        if (obj.echoVideoSender) applySenderParams(obj.echoVideoSender);
+        if (obj.huiVideoTransceiver) applyCodecPreference(obj.huiVideoTransceiver);
+        if (obj.huiVideoSender) applySenderParams(obj.huiVideoSender);
       });
     } catch {}
   }
 
   function attachCameraToPeer(pc, obj, room, peer) {
-    const stream = ECHO_MEDIA.camStream;
+    const stream = HUI_MEDIA.camStream;
     const track = stream && stream.getVideoTracks && stream.getVideoTracks()[0];
     if (!pc || !obj || !track) return null;
-    if (!echoCamCanSendToPeer(room, peer)) return null;
-    if (obj.echoVideoSender && obj.echoVideoSender.track === track) {
-      applySenderParams(obj.echoVideoSender);
-      return obj.echoVideoSender;
+    if (!huiCamCanSendToPeer(room, peer)) return null;
+    if (obj.huiVideoSender && obj.huiVideoSender.track === track) {
+      applySenderParams(obj.huiVideoSender);
+      return obj.huiVideoSender;
     }
     let transceiver = null;
     try {
-      if (obj.echoVideoTransceiver && obj.echoVideoTransceiver.sender) {
-        transceiver = obj.echoVideoTransceiver;
-        obj.echoVideoSender = transceiver.sender;
-        if (obj.echoVideoSender.replaceTrack) obj.echoVideoSender.replaceTrack(track).catch(() => {});
+      if (obj.huiVideoTransceiver && obj.huiVideoTransceiver.sender) {
+        transceiver = obj.huiVideoTransceiver;
+        obj.huiVideoSender = transceiver.sender;
+        if (obj.huiVideoSender.replaceTrack) obj.huiVideoSender.replaceTrack(track).catch(() => {});
         try { transceiver.direction = "sendrecv"; } catch {}
         applyCodecPreference(transceiver);
       } else if (pc.addTransceiver) {
         transceiver = pc.addTransceiver(track, { direction: "sendrecv", streams: [stream] });
         applyCodecPreference(transceiver);
-        obj.echoVideoTransceiver = transceiver;
-        obj.echoVideoSender = transceiver.sender;
+        obj.huiVideoTransceiver = transceiver;
+        obj.huiVideoSender = transceiver.sender;
       } else {
-        obj.echoVideoSender = pc.addTrack(track, stream);
+        obj.huiVideoSender = pc.addTrack(track, stream);
       }
-      applySenderParams(obj.echoVideoSender);
+      applySenderParams(obj.huiVideoSender);
     } catch (e) {
       console.warn("camera attach failed", e);
     }
-    return obj.echoVideoSender;
+    return obj.huiVideoSender;
   }
 
   function attachCameraToApprovedPeers() {
-    if (!ECHO_MEDIA.camStream || !VOICE_STATE || !VOICE_STATE.room || !VOICE_STATE.room.peers) return;
+    if (!HUI_MEDIA.camStream || !VOICE_STATE || !VOICE_STATE.room || !VOICE_STATE.room.peers) return;
     const room = localRoomName();
     VOICE_STATE.room.peers.forEach((obj, peer) => {
-      if (echoCamCanSendToPeer(room, peer)) attachCameraToPeer(obj && obj.pc, obj, room, peer);
+      if (huiCamCanSendToPeer(room, peer)) attachCameraToPeer(obj && obj.pc, obj, room, peer);
     });
   }
 
   function removeCameraFromPeer(obj) {
     if (!obj || !obj.pc) return;
     try {
-      if (obj.echoVideoTransceiver) {
-        if (obj.echoVideoSender && obj.echoVideoSender.replaceTrack) obj.echoVideoSender.replaceTrack(null).catch(() => {});
-        try { obj.echoVideoTransceiver.direction = "inactive"; } catch {}
+      if (obj.huiVideoTransceiver) {
+        if (obj.huiVideoSender && obj.huiVideoSender.replaceTrack) obj.huiVideoSender.replaceTrack(null).catch(() => {});
+        try { obj.huiVideoTransceiver.direction = "inactive"; } catch {}
         return;
       }
-      if (obj.echoVideoSender) obj.pc.removeTrack(obj.echoVideoSender);
+      if (obj.huiVideoSender) obj.pc.removeTrack(obj.huiVideoSender);
     } catch {}
-    obj.echoVideoSender = null;
-    obj.echoVideoTransceiver = null;
+    obj.huiVideoSender = null;
+    obj.huiVideoTransceiver = null;
   }
 
   function removeCameraFromAllPeers() {
@@ -767,54 +793,55 @@
     } catch {}
   }
 
-  function echoCamDisable(reason = "Webcam disabled", opts = {}) {
+  function huiCamDisable(reason = "Webcam disabled", opts = {}) {
     const room = localRoomName();
-    ECHO_MEDIA.camDesired = false;
-    ECHO_MEDIA.comboDesired = false;
-    ECHO_MEDIA.camEnabled = false;
-    ECHO_MEDIA.approvedViewers.clear();
-    if (room) ECHO_MEDIA.activeViewers.delete(room);
-    echoCamClearIncomingRequestsForRoom(room);
+    HUI_MEDIA.camDesired = false;
+    HUI_MEDIA.comboDesired = false;
+    HUI_MEDIA.camEnabled = false;
+    HUI_MEDIA.approvedViewers.clear();
+    if (room) HUI_MEDIA.activeViewers.delete(room);
+    huiCamClearIncomingRequestsForRoom(room);
     removeCameraFromAllPeers();
-    if (ECHO_MEDIA.camStream) {
-      try { ECHO_MEDIA.camStream.getTracks().forEach(t => t.stop()); } catch {}
+    if (HUI_MEDIA.camStream) {
+      try { HUI_MEDIA.camStream.getTracks().forEach(t => t.stop()); } catch {}
     }
-    ECHO_MEDIA.camStream = null;
-    if (ECHO_MEDIA.localTile) {
-      try { ECHO_MEDIA.localTile._echoVideo.srcObject = null; } catch {}
-      try { ECHO_MEDIA.localTile.remove(); } catch {}
+    HUI_MEDIA.camStream = null;
+    if (HUI_MEDIA.localTile) {
+      try { HUI_MEDIA.localTile._huiVideo.srcObject = null; } catch {}
+      try { HUI_MEDIA.localTile.remove(); } catch {}
     }
-    ECHO_MEDIA.localTile = null;
-    try { echoCamUpdateLocalViewerInfo(room); } catch {}
-    try { voiceUpdateLocalMediaStatus(localRoomName(), { webcam_on: false, voice_on: !!ECHO_MEDIA.voiceDesired }); } catch {}
+    HUI_MEDIA.localTile = null;
+    try { huiCamUpdateLocalViewerInfo(room); } catch {}
+    try { voiceUpdateLocalMediaStatus(localRoomName(), { webcam_on: false, voice_on: !!HUI_MEDIA.voiceDesired }); } catch {}
     try { if (room) socket.emit("webcam_status", { room, camera_on: false }, () => {}); } catch {}
     try { voiceUpdateRoomCamButton(); } catch {}
     updateStatus(reason);
-    if (!opts.keepRoom && !ECHO_MEDIA.voiceDesired) {
+    if (!opts.keepRoom && !HUI_MEDIA.voiceDesired) {
       try { voiceLeaveRoom(reason, true); } catch {}
     }
-    try { echoCamRefreshUiState(); } catch {}
+    try { huiCamRefreshUiState(); } catch {}
+    try { huiCamDestroyPanelIfIdle(); } catch {}
   }
 
-  function echoCamStopViewing(owner, room = localRoomName()) {
+  function huiCamStopViewing(owner, room = localRoomName()) {
     owner = String(owner || "").trim();
     room = String(room || localRoomName()).trim();
     if (!owner || !room) return { success: false, error: "missing_owner_or_room" };
-    ECHO_MEDIA.requestedViewers.delete(echoCamKey(room, owner));
-    ECHO_MEDIA.pendingViewRequests && ECHO_MEDIA.pendingViewRequests.delete(echoCamKey(room, owner));
-    echoCamRemoveRemoteVideo(owner);
+    HUI_MEDIA.requestedViewers.delete(huiCamKey(room, owner));
+    HUI_MEDIA.pendingViewRequests && HUI_MEDIA.pendingViewRequests.delete(huiCamKey(room, owner));
+    huiCamRemoveRemoteVideo(owner);
     try { socket.emit("webcam_viewing", { room, owner, viewing: false }, () => {}); } catch {}
     updateStatus(`Stopped viewing ${owner}'s webcam`);
     return { success: true, owner, room };
   }
 
-  function echoCamRefreshDiagnostics() {
-    if (!ECHO_MEDIA.diagnostics) return;
+  function huiCamRefreshDiagnostics() {
+    if (!HUI_MEDIA.diagnostics) return;
     const snap = snapshot();
     const browser = browserWebcamStatus();
     const cfg = webcamConfigStatus();
     const bits = [];
-    bits.push(`Room: ${snap.echoRoom || "none"}`);
+    bits.push(`Room: ${snap.huiRoom || "none"}`);
     bits.push(`Voice: ${snap.voiceDesired ? (snap.micEnabled ? "on" : "connecting") : "off"}`);
     bits.push(`Webcam: ${snap.camDesired ? (snap.camEnabled ? "on" : "connecting") : "off"}`);
     bits.push(`Quality: ${snap.lastCameraQuality || snap.quality || "balanced"}`);
@@ -822,33 +849,33 @@
     if (!cfg.ok) bits.push(`Policy: ${cfg.reason}`);
     else if (!browser.ok) bits.push(`Browser: ${browser.reason}`);
     else if (snap.lastCameraError) bits.push(`Last camera error: ${snap.lastCameraError}`);
-    ECHO_MEDIA.diagnostics.textContent = bits.join(" • ");
+    HUI_MEDIA.diagnostics.textContent = bits.join(" • ");
   }
 
-  function echoCamRefreshUiState() {
+  function huiCamRefreshUiState() {
     try { voiceUpdateRoomVoiceButton(); } catch {}
     try { voiceUpdateRoomCamButton(); } catch {}
-    try { echoCamRefreshDiagnostics(); } catch {}
+    try { huiCamRefreshDiagnostics(); } catch {}
     const room = localRoomName();
-    echoSetButtonBusy($("btnRoomEmbedVoice"), echoMediaIsBusy("voice", room), "🎤 Voice…");
-    echoSetButtonBusy($("btnRoomEmbedCam"), echoMediaIsBusy("cam", room), "📷 Webcam…");
-    if (ECHO_MEDIA.localTile && ECHO_MEDIA.localTile._echoStopBtn) {
-      ECHO_MEDIA.localTile._echoStopBtn.disabled = echoMediaIsBusy("cam", room);
-      ECHO_MEDIA.localTile._echoStopBtn.classList.toggle("isBusy", echoMediaIsBusy("cam", room));
+    huiSetButtonBusy($("btnRoomEmbedVoice"), huiMediaIsBusy("voice", room), "🎤 Voice…");
+    huiSetButtonBusy($("btnRoomEmbedCam"), huiMediaIsBusy("cam", room), "📷 Webcam…");
+    if (HUI_MEDIA.localTile && HUI_MEDIA.localTile._huiStopBtn) {
+      HUI_MEDIA.localTile._huiStopBtn.disabled = huiMediaIsBusy("cam", room);
+      HUI_MEDIA.localTile._huiStopBtn.classList.toggle("isBusy", huiMediaIsBusy("cam", room));
     }
-    ECHO_MEDIA.remoteTiles.forEach((tile, owner) => {
-      if (!tile || !tile._echoStopBtn) return;
-      const busy = echoMediaIsBusy("view", room, owner);
-      tile._echoStopBtn.disabled = busy;
-      tile._echoStopBtn.classList.toggle("isBusy", busy);
-      tile._echoStopBtn.setAttribute("aria-busy", busy ? "true" : "false");
+    HUI_MEDIA.remoteTiles.forEach((tile, owner) => {
+      if (!tile || !tile._huiStopBtn) return;
+      const busy = huiMediaIsBusy("view", room, owner);
+      tile._huiStopBtn.disabled = busy;
+      tile._huiStopBtn.classList.toggle("isBusy", busy);
+      tile._huiStopBtn.setAttribute("aria-busy", busy ? "true" : "false");
     });
   }
 
   async function ensureMediaRoom(room, opts = {}) {
     room = String(room || localRoomName()).trim();
     if (!room) throw new Error("Join a room first");
-    ECHO_MEDIA.echoRoom = room;
+    HUI_MEDIA.huiRoom = room;
     const needAudio = opts.audio !== false;
     if (!VOICE_STATE.room.joined || VOICE_STATE.room.name !== room) {
       const res = await voiceJoinRoom(room, { silent: true, audio: needAudio, viewerOnly: opts.viewerOnly === true || !needAudio });
@@ -870,118 +897,118 @@
   async function toggleVoiceForRoom(room) {
     room = String(room || localRoomName()).trim();
     if (!room) throw new Error("Join a room first");
-    if (echoMediaIsBusy("voice", room)) return { success: false, busy: true };
-    return echoMediaWithBusy("voice", room, "", async () => {
-    if (ECHO_MEDIA.voiceDesired && ECHO_MEDIA.echoRoom === room) {
-      ECHO_MEDIA.voiceDesired = false;
-      ECHO_MEDIA.micEnabled = false;
+    if (huiMediaIsBusy("voice", room)) return { success: false, busy: true };
+    return huiMediaWithBusy("voice", room, "", async () => {
+    if (HUI_MEDIA.voiceDesired && HUI_MEDIA.huiRoom === room) {
+      HUI_MEDIA.voiceDesired = false;
+      HUI_MEDIA.micEnabled = false;
       try { VOICE_STATE.room.wantRoomVoice = false; } catch {}
-      try { sessionStorage.removeItem("echochat_voice_desired"); } catch {}
+      try { sessionStorage.removeItem("hui_voice_desired"); } catch {}
       try { voiceRemoveRoomAudioSenders(); } catch {}
       setMicTracksEnabled(false);
       try { voiceStopMicOnly(); } catch { try { voiceSetMute(true); } catch {} }
-      try { voiceUpdateLocalMediaStatus(room, { voice_on: false, webcam_on: !!ECHO_MEDIA.camDesired }); } catch {}
-      if (!ECHO_MEDIA.camDesired) {
+      try { voiceUpdateLocalMediaStatus(room, { voice_on: false, webcam_on: !!HUI_MEDIA.camDesired }); } catch {}
+      if (!HUI_MEDIA.camDesired) {
         try { voiceLeaveRoom("Voice disabled", true); } catch {}
       } else {
         safeToast("🔇 Voice disabled; webcam still on", "info", 2200);
       }
       try { voiceUpdateRoomVoiceButton(); } catch {}
-      return { success: true, voice: false, webcam: !!ECHO_MEDIA.camDesired };
+      return { success: true, voice: false, webcam: !!HUI_MEDIA.camDesired };
     }
     await ensureMediaRoom(room, { audio: true });
-    ECHO_MEDIA.voiceDesired = true;
-    ECHO_MEDIA.micEnabled = true;
-    ECHO_MEDIA.echoRoom = room;
+    HUI_MEDIA.voiceDesired = true;
+    HUI_MEDIA.micEnabled = true;
+    HUI_MEDIA.huiRoom = room;
     setMicTracksEnabled(true);
     try { voiceSetMute(false); voiceApplyTalkMode({ silent: true }); } catch {}
-    try { voiceUpdateLocalMediaStatus(room, { voice_on: true, webcam_on: !!ECHO_MEDIA.camDesired }); } catch {}
+    try { voiceUpdateLocalMediaStatus(room, { voice_on: true, webcam_on: !!HUI_MEDIA.camDesired }); } catch {}
     try { voiceUpdateRoomVoiceButton(); } catch {}
     safeToast("🎤 Voice connected", "info", 1600);
-    return { success: true, voice: true, webcam: !!ECHO_MEDIA.camDesired };
+    return { success: true, voice: true, webcam: !!HUI_MEDIA.camDesired };
     });
   }
 
   async function toggleCamForRoom(room) {
     room = String(room || localRoomName()).trim();
     if (!room) throw new Error("Join a room first");
-    if (echoMediaIsBusy("cam", room)) return { success: false, busy: true };
-    return echoMediaWithBusy("cam", room, "", async () => {
-    if (ECHO_MEDIA.camDesired && ECHO_MEDIA.echoRoom === room) {
-      echoCamDisable("Webcam disabled", { keepRoom: !!ECHO_MEDIA.voiceDesired });
+    if (huiMediaIsBusy("cam", room)) return { success: false, busy: true };
+    return huiMediaWithBusy("cam", room, "", async () => {
+    if (HUI_MEDIA.camDesired && HUI_MEDIA.huiRoom === room) {
+      huiCamDisable("Webcam disabled", { keepRoom: !!HUI_MEDIA.voiceDesired });
       safeToast("📷 Webcam disabled", "info", 1600);
-      return { success: true, webcam: false, voice: !!ECHO_MEDIA.voiceDesired };
+      return { success: true, webcam: false, voice: !!HUI_MEDIA.voiceDesired };
     }
-    await ensureMediaRoom(room, { audio: !!ECHO_MEDIA.voiceDesired });
+    await ensureMediaRoom(room, { audio: !!HUI_MEDIA.voiceDesired });
     // A webcam-only click must not turn on voice, store voice reconnect flags,
     // or request a microphone. Voice is enabled only by the Voice button.
-    if (!ECHO_MEDIA.voiceDesired) {
+    if (!HUI_MEDIA.voiceDesired) {
       try { VOICE_STATE.room.wantRoomVoice = false; } catch {}
-      try { sessionStorage.removeItem("echochat_voice_desired"); } catch {}
-      try { voiceUpdateLocalMediaStatus(room, { voice_on: false, webcam_on: !!ECHO_MEDIA.camDesired }); } catch {}
+      try { sessionStorage.removeItem("hui_voice_desired"); } catch {}
+      try { voiceUpdateLocalMediaStatus(room, { voice_on: false, webcam_on: !!HUI_MEDIA.camDesired }); } catch {}
     }
     try {
       await ensureCamera();
     } catch (err) {
       const reason = describeCameraError(err);
-      ECHO_MEDIA.lastCameraError = reason;
-      echoCamDisable(reason, { keepRoom: !!ECHO_MEDIA.voiceDesired });
+      HUI_MEDIA.lastCameraError = reason;
+      huiCamDisable(reason, { keepRoom: !!HUI_MEDIA.voiceDesired });
       throw new Error(reason);
     }
-    ECHO_MEDIA.camDesired = true;
-    ECHO_MEDIA.camEnabled = true;
-    ECHO_MEDIA.echoRoom = room;
+    HUI_MEDIA.camDesired = true;
+    HUI_MEDIA.camEnabled = true;
+    HUI_MEDIA.huiRoom = room;
     attachCameraToApprovedPeers();
     try { socket.emit("webcam_status", { room, camera_on: true }, () => {}); } catch {}
-    try { voiceUpdateLocalMediaStatus(room, { webcam_on: true, voice_on: !!ECHO_MEDIA.voiceDesired }); } catch {}
+    try { voiceUpdateLocalMediaStatus(room, { webcam_on: true, voice_on: !!HUI_MEDIA.voiceDesired }); } catch {}
     try { voiceUpdateRoomCamButton(); } catch {}
-    updateStatus(`Webcam on · ${profile().label || ECHO_MEDIA.quality}`);
+    updateStatus(`Webcam on · ${profile().label || HUI_MEDIA.quality}`);
     safeToast("📷 Webcam enabled", "info", 1600);
-    return { success: true, webcam: true, voice: !!ECHO_MEDIA.voiceDesired };
+    return { success: true, webcam: true, voice: !!HUI_MEDIA.voiceDesired };
     });
   }
 
   async function toggleBothForRoom(room) {
     room = String(room || localRoomName()).trim();
     if (!room) throw new Error("Join a room first");
-    if (echoMediaIsBusy("both", room)) return { success: false, busy: true };
-    return echoMediaWithBusy("both", room, "", async () => {
-    if (ECHO_MEDIA.voiceDesired && ECHO_MEDIA.camDesired && ECHO_MEDIA.echoRoom === room) {
+    if (huiMediaIsBusy("both", room)) return { success: false, busy: true };
+    return huiMediaWithBusy("both", room, "", async () => {
+    if (HUI_MEDIA.voiceDesired && HUI_MEDIA.camDesired && HUI_MEDIA.huiRoom === room) {
       await leave("Voice/webcam disabled");
       return { success: true, voice: false, webcam: false };
     }
     await ensureMediaRoom(room, { audio: true });
-    ECHO_MEDIA.voiceDesired = true;
-    ECHO_MEDIA.micEnabled = true;
+    HUI_MEDIA.voiceDesired = true;
+    HUI_MEDIA.micEnabled = true;
     setMicTracksEnabled(true);
     try {
       await ensureCamera();
     } catch (err) {
       const reason = describeCameraError(err);
-      ECHO_MEDIA.lastCameraError = reason;
-      echoCamDisable(reason, { keepRoom: !!ECHO_MEDIA.voiceDesired });
+      HUI_MEDIA.lastCameraError = reason;
+      huiCamDisable(reason, { keepRoom: !!HUI_MEDIA.voiceDesired });
       throw new Error(reason);
     }
-    ECHO_MEDIA.camDesired = true;
-    ECHO_MEDIA.camEnabled = true;
-    ECHO_MEDIA.comboDesired = true;
+    HUI_MEDIA.camDesired = true;
+    HUI_MEDIA.camEnabled = true;
+    HUI_MEDIA.comboDesired = true;
     attachCameraToApprovedPeers();
     try { socket.emit("webcam_status", { room, camera_on: true }, () => {}); } catch {}
     try { voiceUpdateLocalMediaStatus(room, { voice_on: true, webcam_on: true }); } catch {}
     try { voiceUpdateRoomVoiceButton(); voiceUpdateRoomCamButton(); } catch {}
-    updateStatus(`Voice + webcam · ${profile().label || ECHO_MEDIA.quality}`);
+    updateStatus(`Voice + webcam · ${profile().label || HUI_MEDIA.quality}`);
     return { success: true, voice: true, webcam: true };
     });
   }
 
   async function toggleMic() {
     const room = localRoomName();
-    if (echoMediaIsBusy("mic", room)) return { success: false, busy: true };
-    return echoMediaWithBusy("mic", room, "", async () => {
-    if (!ECHO_MEDIA.voiceDesired && !(VOICE_STATE && VOICE_STATE.micStream)) return null;
+    if (huiMediaIsBusy("mic", room)) return { success: false, busy: true };
+    return huiMediaWithBusy("mic", room, "", async () => {
+    if (!HUI_MEDIA.voiceDesired && !(VOICE_STATE && VOICE_STATE.micStream)) return null;
     const muted = !VOICE_STATE.micMuted;
     try { voiceSetMute(muted); } catch {}
-    ECHO_MEDIA.micEnabled = !muted;
+    HUI_MEDIA.micEnabled = !muted;
     safeToast(muted ? "🔇 Mic muted" : "🎤 Mic unmuted", "info", 1600);
     return { success: true, muted };
     });
@@ -995,25 +1022,25 @@
   async function switchRoomIfMediaDesired(room) {
     room = String(room || "").trim();
     if (!room) return null;
-    const wantVoice = !!ECHO_MEDIA.voiceDesired;
-    const wantCam = !!ECHO_MEDIA.camDesired;
+    const wantVoice = !!HUI_MEDIA.voiceDesired;
+    const wantCam = !!HUI_MEDIA.camDesired;
     if (!wantVoice && !wantCam) return null;
-    const previousRoom = String(ECHO_MEDIA.echoRoom || (VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.name) || "").trim();
+    const previousRoom = String(HUI_MEDIA.huiRoom || (VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.name) || "").trim();
     const switchingRooms = !!(previousRoom && previousRoom !== room);
-    const oldCam = ECHO_MEDIA.camStream;
+    const oldCam = HUI_MEDIA.camStream;
     if (switchingRooms) {
       // Clear old-room webcam permissions/status before moving the active camera
       // to the new room.  Without this, old-room users can keep seeing stale
       // webcam-on badges and previously approved viewers can be reused.
       try { if (wantCam) socket.emit("webcam_status", { room: previousRoom, camera_on: false }, () => {}); } catch {}
       try { voiceUpdateLocalMediaStatus(previousRoom, { voice_on: false, webcam_on: false }); } catch {}
-      try { echoCamClearIncomingRequestsForRoom(previousRoom); } catch {}
-      ECHO_MEDIA.approvedViewers.clear();
-      ECHO_MEDIA.requestedViewers.clear();
+      try { huiCamClearIncomingRequestsForRoom(previousRoom); } catch {}
+      HUI_MEDIA.approvedViewers.clear();
+      HUI_MEDIA.requestedViewers.clear();
       clearRemoteVideos();
     }
     await ensureMediaRoom(room, { audio: wantVoice });
-    ECHO_MEDIA.echoRoom = room;
+    HUI_MEDIA.huiRoom = room;
     if (wantCam && oldCam) {
       attachCameraToApprovedPeers();
       try { socket.emit("webcam_status", { room, camera_on: true }, () => {}); } catch {}
@@ -1023,19 +1050,18 @@
   }
 
   async function leave(reason = "Media disabled", opts = {}) {
-    ECHO_MEDIA.voiceDesired = !!(opts && opts.preserveDesired && ECHO_MEDIA.voiceDesired);
-    ECHO_MEDIA.micEnabled = false;
-    const hadCam = !!ECHO_MEDIA.camDesired;
-    echoCamDisable(reason, { keepRoom: false });
-    if (!opts || !opts.preserveDesired) ECHO_MEDIA.voiceDesired = false;
+    HUI_MEDIA.voiceDesired = !!(opts && opts.preserveDesired && HUI_MEDIA.voiceDesired);
+    HUI_MEDIA.micEnabled = false;
+    huiCamDisable(reason, { keepRoom: false });
+    if (!opts || !opts.preserveDesired) HUI_MEDIA.voiceDesired = false;
     try { voiceLeaveRoom(reason, true, { silent: !!(opts && opts.silent) }); } catch {}
     clearRemoteVideos();
-    if (ECHO_MEDIA.panel && !hadCam) updateStatus(reason);
+    try { huiCamDestroyPanelIfIdle({ force: true }); } catch {}
     return { success: true };
   }
 
 
-  function echoSocketAck(event, payload) {
+  function huiSocketAck(event, payload) {
     return new Promise((resolve) => {
       try {
         if (!socket || !socket.emit) return resolve({ success: false, error: "Socket is not connected" });
@@ -1046,7 +1072,7 @@
     });
   }
 
-  function echoCamOwnerHasWebcamOn(owner, room) {
+  function huiCamOwnerHasWebcamOn(owner, room) {
     owner = String(owner || "").trim();
     room = String(room || localRoomName()).trim();
     if (!owner || owner === String(currentUser || "").trim() || !room) return false;
@@ -1059,22 +1085,22 @@
     }
   }
 
-  async function echoJoinMediaRoomForViewing(owner, room) {
+  async function huiJoinMediaRoomForViewing(owner, room) {
     owner = String(owner || "").trim();
     room = String(room || localRoomName()).trim();
     if (!owner || !room) return { success: false, error: "Missing webcam owner or room" };
     const alreadyInRoom = !!(VOICE_STATE.room.joined && VOICE_STATE.room.name === room);
-    const preserveVoice = alreadyInRoom && !!(ECHO_MEDIA.voiceDesired || VOICE_STATE.room.wantRoomVoice);
+    const preserveVoice = alreadyInRoom && !!(HUI_MEDIA.voiceDesired || VOICE_STATE.room.wantRoomVoice);
     if (!alreadyInRoom) {
       const res = await voiceJoinRoom(room, { silent: true, audio: false, viewerOnly: true });
       if (!res || !res.success) return res || { success: false, error: "Media room join failed" };
     }
-    ECHO_MEDIA.echoRoom = room;
-    ECHO_MEDIA.requestedViewers.add(echoCamKey(room, owner));
+    HUI_MEDIA.huiRoom = room;
+    HUI_MEDIA.requestedViewers.add(huiCamKey(room, owner));
     if (!preserveVoice) {
       try { VOICE_STATE.room.wantRoomVoice = false; } catch {}
-      try { sessionStorage.removeItem("echochat_voice_desired"); } catch {}
-      try { voiceUpdateLocalMediaStatus(room, { voice_on: false, webcam_on: !!ECHO_MEDIA.camDesired }); } catch {}
+      try { sessionStorage.removeItem("hui_voice_desired"); } catch {}
+      try { voiceUpdateLocalMediaStatus(room, { voice_on: false, webcam_on: !!HUI_MEDIA.camDesired }); } catch {}
     }
     try {
       if (!VOICE_STATE.room.peers.has(owner) && typeof voiceRoomEnsurePeer === "function") voiceRoomEnsurePeer(room, owner);
@@ -1085,11 +1111,11 @@
     return { success: true, owner, room };
   }
 
-  async function echoRequestRemoteCamFromRoomUser(owner, roomName) {
+  async function huiRequestRemoteCamFromRoomUser(owner, roomName) {
     owner = String(owner || "").trim();
     const room = String(roomName || localRoomName()).trim();
-    if (echoMediaIsBusy("view", room, owner)) return { success: false, busy: true };
-    return echoMediaWithBusy("view", room, owner, async () => {
+    if (huiMediaIsBusy("view", room, owner)) return { success: false, busy: true };
+    return huiMediaWithBusy("view", room, owner, async () => {
     if (!owner || !room) {
       safeToast("📷 Join a room before viewing webcams.", "warn");
       return { success: false, error: "missing_room_or_owner" };
@@ -1098,19 +1124,19 @@
       safeToast("📷 Use the webcam button to preview your own camera.", "info");
       return { success: false, error: "self_webcam" };
     }
-    if (!echoCamOwnerHasWebcamOn(owner, room)) {
+    if (!huiCamOwnerHasWebcamOn(owner, room)) {
       safeToast(`${owner} does not have webcam on right now.`, "warn", 2600);
       return { success: false, error: "webcam_off" };
     }
 
     safeToast(`📷 Requesting ${owner}'s webcam…`, "info", 1800);
-    const ack = await echoSocketAck("webcam_view_request", { room, owner });
+    const ack = await huiSocketAck("webcam_view_request", { room, owner });
     if (!ack || !ack.success) {
       safeToast(`❌ Webcam request failed: ${ack && ack.error ? ack.error : "not delivered"}`, "error", 5000);
       return ack || { success: false, error: "webcam_request_failed" };
     }
     if (ack.allowed || ack.auto_allowed || (ack.policy && ack.policy.webcam_approval_mode === "open")) {
-      const opened = await echoJoinMediaRoomForViewing(owner, room);
+      const opened = await huiJoinMediaRoomForViewing(owner, room);
       if (opened && opened.success) safeToast(`📷 Viewing ${owner}'s webcam`, "ok", 2200);
       return { ...ack, opened: !!(opened && opened.success) };
     }
@@ -1119,20 +1145,20 @@
     });
   }
 
-  async function echoRespondToCamViewRequest(room, viewer, allowed) {
+  async function huiRespondToCamViewRequest(room, viewer, allowed) {
     room = String(room || localRoomName()).trim();
     viewer = String(viewer || "").trim();
     if (!room || !viewer || viewer === String(currentUser || "").trim()) return;
-    if (echoMediaIsBusy("respond", room, viewer)) return { success: false, busy: true };
-    return echoMediaWithBusy("respond", room, viewer, async () => {
-    const ack = await echoSocketAck("webcam_view_response", { room, viewer, allowed: !!allowed });
+    if (huiMediaIsBusy("respond", room, viewer)) return { success: false, busy: true };
+    return huiMediaWithBusy("respond", room, viewer, async () => {
+    const ack = await huiSocketAck("webcam_view_response", { room, viewer, allowed: !!allowed });
     if (!ack || !ack.success) {
       safeToast(`❌ Webcam response failed: ${ack && ack.error ? ack.error : "not delivered"}`, "error", 4500);
       return ack;
     }
-    echoCamRemoveIncomingRequest(room, viewer);
-    echoCamSetViewerApproved(room, viewer, !!allowed);
-    if (Array.isArray(ack.viewers)) echoCamReplaceActiveViewers(room, ack.viewers);
+    huiCamRemoveIncomingRequest(room, viewer);
+    huiCamSetViewerApproved(room, viewer, !!allowed);
+    if (Array.isArray(ack.viewers)) huiCamReplaceActiveViewers(room, ack.viewers);
     if (allowed) {
       try {
         const obj = VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.peers && VOICE_STATE.room.peers.get(viewer);
@@ -1149,20 +1175,20 @@
     });
   }
 
-  function wireEchoWebcamViewEvents() {
-    if (!socket || socket._echoWebcamViewEventsBound) return;
-    socket._echoWebcamViewEventsBound = true;
+  function wireHuiWebcamViewEvents() {
+    if (!socket || socket._huiWebcamViewEventsBound) return;
+    socket._huiWebcamViewEventsBound = true;
 
     socket.on("webcam_view_request", (payload = {}) => {
       const room = String(payload.room || localRoomName()).trim();
       const viewer = String(payload.viewer || "").trim();
       if (!room || !viewer || viewer === String(currentUser || "").trim()) return;
-      const localCamOn = !!(ECHO_MEDIA.camDesired || ECHO_MEDIA.camEnabled);
+      const localCamOn = !!(HUI_MEDIA.camDesired || HUI_MEDIA.camEnabled);
       if (!localCamOn) {
-        echoRespondToCamViewRequest(room, viewer, false);
+        huiRespondToCamViewRequest(room, viewer, false);
         return;
       }
-      echoCamUpsertIncomingRequest(room, viewer, payload.policy || null);
+      huiCamUpsertIncomingRequest(room, viewer, payload.policy || null);
       safeToast(`📷 Webcam request from ${viewer} is waiting in Alerts.`, "info", 5000);
       try { if (typeof maybeBrowserNotify === "function") maybeBrowserNotify("Webcam request", `${viewer} wants to view your webcam in ${room}`); } catch {}
     });
@@ -1171,22 +1197,22 @@
       const room = String(payload.room || localRoomName()).trim();
       const owner = String(payload.owner || "").trim();
       if (!room || !owner || owner === String(currentUser || "").trim()) return;
-      if (Array.isArray(payload.viewers) && owner === String(currentUser || "").trim()) echoCamReplaceActiveViewers(room, payload.viewers);
+      if (Array.isArray(payload.viewers) && owner === String(currentUser || "").trim()) huiCamReplaceActiveViewers(room, payload.viewers);
       if (payload.allowed) {
-        const opened = await echoJoinMediaRoomForViewing(owner, room);
+        const opened = await huiJoinMediaRoomForViewing(owner, room);
         if (opened && opened.success) safeToast(`📷 Viewing ${owner}'s webcam`, "ok", 2200);
       } else {
-        ECHO_MEDIA.requestedViewers.delete(echoCamKey(room, owner));
-        echoCamRemoveRemoteVideo(owner);
+        HUI_MEDIA.requestedViewers.delete(huiCamKey(room, owner));
+        huiCamRemoveRemoteVideo(owner);
         safeToast(`📷 ${owner} denied the webcam request.`, "warn", 3200);
       }
-      try { echoCamRefreshUiState(); } catch {}
+      try { huiCamRefreshUiState(); } catch {}
     });
 
     socket.on("webcam_view_kick", (payload = {}) => {
       const owner = String(payload.owner || "").trim();
-      if (Array.isArray(payload.viewers) && owner === String(currentUser || "").trim()) echoCamReplaceActiveViewers(String(payload.room || localRoomName()).trim(), payload.viewers);
-      if (owner) echoCamRemoveRemoteVideo(owner);
+      if (Array.isArray(payload.viewers) && owner === String(currentUser || "").trim()) huiCamReplaceActiveViewers(String(payload.room || localRoomName()).trim(), payload.viewers);
+      if (owner) huiCamRemoveRemoteVideo(owner);
       safeToast(owner ? `📷 ${owner} stopped your webcam view.` : "📷 Webcam view stopped.", "info", 3200);
     });
 
@@ -1196,10 +1222,10 @@
       const viewer = String(payload.viewer || "").trim();
       const viewing = payload.viewing !== false && String(payload.viewing).toLowerCase() !== "false";
       if (!room || !viewer || viewer === String(currentUser || "").trim()) return;
-      if (Array.isArray(payload.viewers)) echoCamReplaceActiveViewers(room, payload.viewers);
-      else echoCamSetActiveViewing(room, viewer, viewing);
-      if (viewing) echoCamRemoveIncomingRequest(room, viewer);
-      echoCamSetViewerApproved(room, viewer, viewing);
+      if (Array.isArray(payload.viewers)) huiCamReplaceActiveViewers(room, payload.viewers);
+      else huiCamSetActiveViewing(room, viewer, viewing);
+      if (viewing) huiCamRemoveIncomingRequest(room, viewer);
+      huiCamSetViewerApproved(room, viewer, viewing);
       try {
         const obj = VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.peers && VOICE_STATE.room.peers.get(viewer);
         if (viewing) {
@@ -1215,31 +1241,31 @@
     socket.on("webcam_status", (payload = {}) => {
       const owner = String(payload.owner || "").trim();
       const room = String(payload.room || localRoomName()).trim();
-      if (Array.isArray(payload.viewers) && owner === String(currentUser || "").trim()) echoCamReplaceActiveViewers(room, payload.viewers);
+      if (Array.isArray(payload.viewers) && owner === String(currentUser || "").trim()) huiCamReplaceActiveViewers(room, payload.viewers);
       if (owner && payload.camera_on === false) {
-        ECHO_MEDIA.requestedViewers.delete(echoCamKey(room, owner));
-        echoCamRemoveRemoteVideo(owner);
+        HUI_MEDIA.requestedViewers.delete(huiCamKey(room, owner));
+        huiCamRemoveRemoteVideo(owner);
         updateStatus(owner === String(currentUser || "").trim() ? "Your webcam is off" : `${owner}'s webcam is off`);
       }
-      try { echoCamRefreshUiState(); } catch {}
+      try { huiCamRefreshUiState(); } catch {}
     });
   }
 
   function snapshot() {
     return {
-      engine: "echo",
+      engine: "hui",
       connected: !!(VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.joined),
-      echoRoom: localRoomName(),
-      voiceDesired: !!ECHO_MEDIA.voiceDesired,
-      camDesired: !!ECHO_MEDIA.camDesired,
-      comboDesired: !!ECHO_MEDIA.comboDesired,
-      micEnabled: !!(ECHO_MEDIA.voiceDesired && !VOICE_STATE.micMuted),
-      camEnabled: !!ECHO_MEDIA.camEnabled,
-      quality: ECHO_MEDIA.quality,
-      lastCameraQuality: ECHO_MEDIA.lastCameraQuality || "",
-      viewers: echoCamViewerSummary(localRoomName()).viewers,
-      viewerCount: echoCamViewerSummary(localRoomName()).viewerCount,
-      lastCameraError: ECHO_MEDIA.lastCameraError || "",
+      huiRoom: localRoomName(),
+      voiceDesired: !!HUI_MEDIA.voiceDesired,
+      camDesired: !!HUI_MEDIA.camDesired,
+      comboDesired: !!HUI_MEDIA.comboDesired,
+      micEnabled: !!(HUI_MEDIA.voiceDesired && !VOICE_STATE.micMuted),
+      camEnabled: !!HUI_MEDIA.camEnabled,
+      quality: HUI_MEDIA.quality,
+      lastCameraQuality: HUI_MEDIA.lastCameraQuality || "",
+      viewers: huiCamViewerSummary(localRoomName()).viewers,
+      viewerCount: huiCamViewerSummary(localRoomName()).viewerCount,
+      lastCameraError: HUI_MEDIA.lastCameraError || "",
     };
   }
 
@@ -1259,37 +1285,37 @@
       if (typeof ecApiErrorMessage === "function" && resp) {
         console.warn(ecApiErrorMessage(resp, j, 'Media mode request failed'));
       }
-      return { ok: true, av_mode: "echo", reason: "offline_client_default", error: err && err.message ? err.message : String(err || "") };
+      return { ok: true, av_mode: "hui", reason: "offline_client_default", error: err && err.message ? err.message : String(err || "") };
     }
   }
 
-  wireEchoWebcamViewEvents();
+  wireHuiWebcamViewEvents();
 
-  window.echoCamAttachRemoteVideo = echoCamAttachRemoteVideo;
-  window.echoCamRemoveRemoteVideo = echoCamRemoveRemoteVideo;
-  window.echoCamAttachTrackToPeer = attachCameraToPeer;
-  window.echoCamCanReceiveFromPeer = echoCamCanReceiveFromPeer;
-  window.echoCamCanSendToPeer = echoCamCanSendToPeer;
-  window.echoCamSetViewerApproved = echoCamSetViewerApproved;
-  window.echoCamSetActiveViewing = echoCamSetActiveViewing;
-  window.echoCamReplaceActiveViewers = echoCamReplaceActiveViewers;
-  window.echoCamViewerSummary = echoCamViewerSummary;
-  window.echoCamUpsertIncomingRequest = echoCamUpsertIncomingRequest;
-  window.echoCamRemoveIncomingRequest = echoCamRemoveIncomingRequest;
-  window.echoRespondToCamViewRequest = echoRespondToCamViewRequest;
-  window.echoCamApplyQualityToAllSenders = echoCamApplyQualityToAllSenders;
-  window.echoCamApplyQualityToLocalTrack = echoCamApplyQualityToLocalTrack;
-  window.echoCamDisable = echoCamDisable;
-  window.echoCamStopViewing = echoCamStopViewing;
-  window.echoCamRefreshUiState = echoCamRefreshUiState;
-  window.echoMediaIsBusy = echoMediaIsBusy;
-  window.echoRequestRemoteCamFromRoomUser = echoRequestRemoteCamFromRoomUser;
+  window.huiCamAttachRemoteVideo = huiCamAttachRemoteVideo;
+  window.huiCamRemoveRemoteVideo = huiCamRemoveRemoteVideo;
+  window.huiCamAttachTrackToPeer = attachCameraToPeer;
+  window.huiCamCanReceiveFromPeer = huiCamCanReceiveFromPeer;
+  window.huiCamCanSendToPeer = huiCamCanSendToPeer;
+  window.huiCamSetViewerApproved = huiCamSetViewerApproved;
+  window.huiCamSetActiveViewing = huiCamSetActiveViewing;
+  window.huiCamReplaceActiveViewers = huiCamReplaceActiveViewers;
+  window.huiCamViewerSummary = huiCamViewerSummary;
+  window.huiCamUpsertIncomingRequest = huiCamUpsertIncomingRequest;
+  window.huiCamRemoveIncomingRequest = huiCamRemoveIncomingRequest;
+  window.huiRespondToCamViewRequest = huiRespondToCamViewRequest;
+  window.huiCamApplyQualityToAllSenders = huiCamApplyQualityToAllSenders;
+  window.huiCamApplyQualityToLocalTrack = huiCamApplyQualityToLocalTrack;
+  window.huiCamDisable = huiCamDisable;
+  window.huiCamStopViewing = huiCamStopViewing;
+  window.huiCamRefreshUiState = huiCamRefreshUiState;
+  window.huiMediaIsBusy = huiMediaIsBusy;
+  window.huiRequestRemoteCamFromRoomUser = huiRequestRemoteCamFromRoomUser;
 
   try {
     if (typeof ecRegisterMediaEngine === "function") {
       ecRegisterMediaEngine({
-        id: "echo",
-        label: "Echo built-in media",
+        id: "hui",
+        label: "Hui built-in media",
         ready,
         webcamAvailable,
         webcamUnavailableReason,
@@ -1304,9 +1330,9 @@
         leave,
         isConnectedToRoom: (room) => String(localRoomName()) === String(room || "") && !!(VOICE_STATE && VOICE_STATE.room && VOICE_STATE.room.joined),
       }, { active: true });
-      if (typeof ecMediaSetActive === "function") ecMediaSetActive("echo");
+      if (typeof ecMediaSetActive === "function") ecMediaSetActive("hui");
     }
   } catch (e) {
-    console.warn("Echo media engine registration failed", e);
+    console.warn("Hui media engine registration failed", e);
   }
 })();

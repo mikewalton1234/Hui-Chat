@@ -52,18 +52,18 @@ function voiceDmSetConnected(peer, call, muteLabel) {
 function voiceDmWirePeerConnection(peer, call) {
   if (!call || !call.pc) return;
   const pc = call.pc;
-  pc._echoIceRestartOffer = async () => {
+  pc._huiIceRestartOffer = async () => {
     const current = VOICE_STATE.dmCalls.get(peer);
     if (!current || current.call_id !== call.call_id || call.ending || !call.pc) return false;
     if (pc.signalingState !== "stable") return false;
-    pc._echoMakingOffer = true;
+    pc._huiMakingOffer = true;
     try {
       const offer = await pc.createOffer({ offerToReceiveAudio: true, iceRestart: true });
       await pc.setLocalDescription(offer);
       const ack = await new Promise((resolve) => socket.emit("voice_dm_offer", { to: peer, call_id: call.call_id, offer: pc.localDescription, ice_restart: true }, resolve));
       return !!(ack && ack.success);
     } finally {
-      pc._echoMakingOffer = false;
+      pc._huiMakingOffer = false;
     }
   };
   pc.ontrack = (ev) => {
@@ -311,14 +311,14 @@ async function voiceJoinRoom(room, opts) {
       } catch (e) {}
       voiceSetMute(false);
       voiceApplyTalkMode({ silent: true });
-      try { sessionStorage.setItem("echochat_voice_desired", "1"); } catch (e) {}
+      try { sessionStorage.setItem("hui_voice_desired", "1"); } catch (e) {}
       try { voiceUpdateLocalMediaStatus(room, { voice_on: true }); } catch (e) {}
     } else {
       // Webcam-only and viewer-only joins keep the signaling mesh without turning
       // on room voice or setting reconnect voice preferences.
       if (!VOICE_STATE.room.wantRoomVoice) {
         VOICE_STATE.room.viewerOnly = !!viewerOnly;
-        try { sessionStorage.removeItem("echochat_voice_desired"); } catch (e) {}
+        try { sessionStorage.removeItem("hui_voice_desired"); } catch (e) {}
       }
       try { voiceUpdateLocalMediaStatus(room, { voice_on: !!VOICE_STATE.room.wantRoomVoice }); } catch (e) {}
     }
@@ -370,10 +370,10 @@ async function voiceJoinRoom(room, opts) {
 
     // Persist for reconnect restore (per-tab).
     try {
-      sessionStorage.setItem("echochat_voice_room", String(room));
-      sessionStorage.setItem("echochat_voice_room_joined", "1");
-      if (voiceDesired) sessionStorage.setItem("echochat_voice_desired", "1");
-      else sessionStorage.removeItem("echochat_voice_desired");
+      sessionStorage.setItem("hui_voice_room", String(room));
+      sessionStorage.setItem("hui_voice_room_joined", "1");
+      if (voiceDesired) sessionStorage.setItem("hui_voice_desired", "1");
+      else sessionStorage.removeItem("hui_voice_desired");
     } catch (e) {}
 
     const roster = Array.isArray(ack.users) ? ack.users : [];

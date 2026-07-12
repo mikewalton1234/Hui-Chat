@@ -54,7 +54,7 @@ const EC_CONVO_TYPING_SEND_THROTTLE_MS = 2200;
 const EC_CONVO_TYPING_STATE = new Map();
 
 function ecTypingFeatureEnabled(surface) {
-  const cfg = window.ECHOCHAT_CFG || {};
+  const cfg = window.HUI_CFG || {};
   if (surface === 'pm' || surface === 'dm' || surface === 'direct') {
     return (typeof ecConfigBool === 'function') ? ecConfigBool(cfg.enable_dm_typing_indicators, true) : cfg.enable_dm_typing_indicators !== false;
   }

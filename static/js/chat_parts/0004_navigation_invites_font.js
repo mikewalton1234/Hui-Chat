@@ -15,7 +15,7 @@ window.addEventListener("pagehide", () => {
 // Track which invite notifications we've already shown this tab/session.
 // This prevents repeated toasts on reconnect/reload while still allowing
 // invites to be re-surfaced after a full sign-out.
-const INV_SEEN_SS_KEY = "echochat_invite_seen_v1";
+const INV_SEEN_SS_KEY = "hui_invite_seen_v1";
 try {
   const raw = sessionStorage.getItem(INV_SEEN_SS_KEY);
   const arr = raw ? JSON.parse(raw) : [];

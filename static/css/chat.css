@@ -1,4 +1,4 @@
-/* Echo-Chat — Retro Web GUI
+/* Hui Chat — Retro Web GUI
    NOTE: This replaces the old "function test panel" styling.
 */
 
@@ -5558,7 +5558,8 @@ body.theme-dark .settingsStatus.warnText,
 }
 
 .friendGroupHeader.dragOver,
-.friendGroupEmpty.dragOver {
+.friendGroupEmpty.dragOver,
+.friendItem.dragOver {
   background: rgba(var(--accent-rgb), 0.16) !important;
   outline: 1px dashed rgba(var(--accent-rgb), 0.4);
   outline-offset: -3px;
@@ -5622,6 +5623,14 @@ body.theme-dark .settingsStatus.warnText,
   cursor: grabbing;
 }
 
+.friendItem[draggable="true"] {
+  cursor: grab;
+}
+
+.friendItem.dragging {
+  cursor: grabbing;
+}
+
 .friendGroupChild .liLeft {
   padding-left: 16px;
 }
@@ -5638,6 +5647,21 @@ body.theme-dark .settingsStatus.warnText,
   opacity: 0.55;
 }
 
+.friendDragGhost {
+  position: fixed;
+  z-index: 2147483000;
+  pointer-events: none;
+  padding: 8px 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(var(--accent-rgb), 0.36);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 12px 30px rgba(24, 39, 75, 0.22);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* Settings modal divider */
 .settingsDivider {
   height: 1px;
@@ -5646,7 +5670,7 @@ body.theme-dark .settingsStatus.warnText,
 }
 
 
-/* Echo webcam box: floating panel so video does not resize the chat log */
+/* Hui webcam box: floating panel so video does not resize the chat log */
 .ym-avPanel{
   position: absolute;
   right: 252px;

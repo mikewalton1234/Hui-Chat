@@ -133,7 +133,7 @@ def _checksum_path(path: Path) -> str:
 
 
 def _load_python_migration(path: Path) -> MigrationSpec:
-    spec = importlib.util.spec_from_file_location(f"echochat_migration_{path.stem}", path)
+    spec = importlib.util.spec_from_file_location(f"hui_migration_{path.stem}", path)
     if spec is None or spec.loader is None:
         raise RuntimeError(f"Could not load migration module: {path.name}")
     module = importlib.util.module_from_spec(spec)
@@ -254,7 +254,7 @@ def apply_migrations() -> dict:
     try:
         with conn.cursor() as cur:
             cur.execute("SELECT pg_advisory_lock(%s, %s);", _MIGRATION_LOCK_KEY)
-        logging.info("Acquired Echo-Chat migration advisory lock")
+        logging.info("Acquired Hui Chat migration advisory lock")
 
         applied = _get_applied_migration_rows(conn)
         for migration in available:
@@ -313,7 +313,7 @@ def apply_migrations() -> dict:
         try:
             with conn.cursor() as cur:
                 cur.execute("SELECT pg_advisory_unlock(%s, %s);", _MIGRATION_LOCK_KEY)
-            logging.info("Released Echo-Chat migration advisory lock")
+            logging.info("Released Hui Chat migration advisory lock")
         except Exception as exc:
             logging.warning("Could not release migration advisory lock cleanly; closing dedicated session: %s", exc)
         conn.close()

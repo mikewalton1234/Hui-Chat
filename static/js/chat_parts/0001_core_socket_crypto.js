@@ -1,31 +1,31 @@
 // Lightweight boot/runtime JavaScript diagnostics. Keep errors recorded for
 // browser-console debugging, but do not paint an in-page red warning bar.
-window.ECHOCHAT_JS_ERRORS = Array.isArray(window.ECHOCHAT_JS_ERRORS) ? window.ECHOCHAT_JS_ERRORS : [];
-function echoChatShowJsHealthWarning(message) {
+window.HUI_JS_ERRORS = Array.isArray(window.HUI_JS_ERRORS) ? window.HUI_JS_ERRORS : [];
+function huiChatShowJsHealthWarning(message) {
   try {
-    if (window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.debug_js_health_overlay === true) {
-      console.warn("[Echo-Chat JS]", message);
+    if (window.HUI_CFG && window.HUI_CFG.debug_js_health_overlay === true) {
+      console.warn("[Hui Chat JS]", message);
     }
   } catch {}
 }
-function echoChatRecordJsError(kind, error) {
+function huiChatRecordJsError(kind, error) {
   try {
     const msg = String((error && (error.message || error.reason || error.toString())) || error || kind || "unknown error");
-    window.ECHOCHAT_JS_ERRORS.push({ kind, message: msg, at: new Date().toISOString() });
-    if (window.ECHOCHAT_JS_ERRORS.length > 20) window.ECHOCHAT_JS_ERRORS.shift();
-    echoChatShowJsHealthWarning(msg);
+    window.HUI_JS_ERRORS.push({ kind, message: msg, at: new Date().toISOString() });
+    if (window.HUI_JS_ERRORS.length > 20) window.HUI_JS_ERRORS.shift();
+    huiChatShowJsHealthWarning(msg);
   } catch {}
 }
 window.addEventListener("error", (event) => {
-  try { echoChatRecordJsError("error", event.error || event.message || "script error"); } catch {}
+  try { huiChatRecordJsError("error", event.error || event.message || "script error"); } catch {}
 });
 window.addEventListener("unhandledrejection", (event) => {
-  try { echoChatRecordJsError("unhandledrejection", event.reason || "unhandled promise rejection"); } catch {}
+  try { huiChatRecordJsError("unhandledrejection", event.reason || "unhandled promise rejection"); } catch {}
 });
 const __socketIoAvailable = typeof window.io === "function";
 if (!__socketIoAvailable) {
-  echoChatRecordJsError("boot", "Socket.IO client library did not load; continuing with limited HTTP-only GUI bootstrap.");
-  window.ECHOCHAT_SOCKETIO_CLIENT_MISSING = true;
+  huiChatRecordJsError("boot", "Socket.IO client library did not load; continuing with limited HTTP-only GUI bootstrap.");
+  window.HUI_SOCKETIO_CLIENT_MISSING = true;
 }
 
 function ecCreateSocketFallback(reason = "socketio_client_missing") {
@@ -62,7 +62,7 @@ function ecCreateSocketFallback(reason = "socketio_client_missing") {
     if (!list.length) return;
     const keep = [];
     for (const entry of list) {
-      try { entry.fn(...args); } catch (e) { echoChatRecordJsError("socket_fallback_handler", e); }
+      try { entry.fn(...args); } catch (e) { huiChatRecordJsError("socket_fallback_handler", e); }
       if (!entry.once) keep.push(entry);
     }
     if (keep.length) store.set(key, keep);
@@ -108,11 +108,11 @@ function ecCreateSocketFallback(reason = "socketio_client_missing") {
   return sock;
 }
 
-const __wsEnabled = !!(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.ws_enabled);
-const __socketTransports = Array.isArray(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.socketio_transports) ? window.ECHOCHAT_CFG.socketio_transports : (__wsEnabled ? ["websocket", "polling"] : ["polling"]);
-const __socketWebsocketOnly = !!(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.socketio_websocket_only);
-const ECHOCHAT_CFG = (window.ECHOCHAT_CFG && typeof window.ECHOCHAT_CFG === "object") ? window.ECHOCHAT_CFG : {};
-const SERVER_NAME = String(ECHOCHAT_CFG.server_name || "Echo-Chat").trim() || "Echo-Chat";
+const __wsEnabled = !!(window.HUI_CFG && window.HUI_CFG.ws_enabled);
+const __socketTransports = Array.isArray(window.HUI_CFG && window.HUI_CFG.socketio_transports) ? window.HUI_CFG.socketio_transports : (__wsEnabled ? ["websocket", "polling"] : ["polling"]);
+const __socketWebsocketOnly = !!(window.HUI_CFG && window.HUI_CFG.socketio_websocket_only);
+const HUI_CFG = (window.HUI_CFG && typeof window.HUI_CFG === "object") ? window.HUI_CFG : {};
+const SERVER_NAME = String(HUI_CFG.server_name || "Hui Chat").trim() || "Hui Chat";
 const SERVER_ADMIN_NAME = `${SERVER_NAME} Admin`;
 const serverRoomLabel = () => `${SERVER_NAME} room`;
 
@@ -138,8 +138,8 @@ const socket = __socketIoAvailable ? window.io({
 
 try {
   window.socket = socket;
-  window.ECHOCHAT_SOCKET = socket;
-  window.ECHOCHAT_SOCKETIO_AVAILABLE = __socketIoAvailable;
+  window.HUI_SOCKET = socket;
+  window.HUI_SOCKETIO_AVAILABLE = __socketIoAvailable;
 } catch {}
 
 // When the server rejects Socket.IO events because the access JWT expired,

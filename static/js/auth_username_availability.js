@@ -103,5 +103,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAll);
   else initAll();
-  window.EchoChatUsernameAvailability = { initAll };
+  window.HuiChatUsernameAvailability = { initAll };
 })();

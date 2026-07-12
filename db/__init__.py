@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""EchoChat DB package: modularized helpers behind the legacy database.py facade."""
+"""HuiChat DB package: modularized helpers behind the legacy database.py facade."""
 
 from db.core import (
     init_db_pool,

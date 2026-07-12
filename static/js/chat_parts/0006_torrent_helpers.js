@@ -23,16 +23,16 @@ function _torrentBoolSetting(value, fallback = false) {
 }
 
 function torrentPublicFallbackEnabled() {
-  return _torrentBoolSetting(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_public_fallback_scrape_enabled, true);
+  return _torrentBoolSetting(window.HUI_CFG && window.HUI_CFG.torrent_public_fallback_scrape_enabled, true);
 }
 
 function torrentDhtScrapeEnabled() {
-  return _torrentBoolSetting(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_dht_scrape_enabled, true);
+  return _torrentBoolSetting(window.HUI_CFG && window.HUI_CFG.torrent_dht_scrape_enabled, true);
 }
 
 function configuredPublicTorrentTrackers() {
   if (!torrentPublicFallbackEnabled()) return [];
-  const raw = window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_public_fallback_trackers;
+  const raw = window.HUI_CFG && window.HUI_CFG.torrent_public_fallback_trackers;
   const source = Array.isArray(raw) && raw.length ? raw : DEFAULT_PUBLIC_TRACKERS;
   const out = [];
   for (const item of source) {
@@ -52,18 +52,18 @@ function configuredPublicTorrentTrackers() {
 }
 
 function isTorrentScrapeEnabled() {
-  return _torrentBoolSetting(window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_scrape_enabled, false);
+  return _torrentBoolSetting(window.HUI_CFG && window.HUI_CFG.torrent_scrape_enabled, false);
 }
 
 function setTorrentScrapeEnabledForClient(enabled) {
-  window.ECHOCHAT_CFG = window.ECHOCHAT_CFG || {};
-  window.ECHOCHAT_CFG.torrent_scrape_enabled = !!enabled;
-  if (enabled) window.ECHOCHAT_CFG.torrent_scrape_disabled_reason = "";
+  window.HUI_CFG = window.HUI_CFG || {};
+  window.HUI_CFG.torrent_scrape_enabled = !!enabled;
+  if (enabled) window.HUI_CFG.torrent_scrape_disabled_reason = "";
 }
 
 function torrentScrapeDisabledReason() {
   return String(
-    (window.ECHOCHAT_CFG && window.ECHOCHAT_CFG.torrent_scrape_disabled_reason)
+    (window.HUI_CFG && window.HUI_CFG.torrent_scrape_disabled_reason)
     || "Tracker scraping is disabled by the server administrator. Server setting torrent_scrape_enabled=false. Admin can enable tracker scraping under Admin Panel → Limits and uploads."
   );
 }
@@ -422,7 +422,7 @@ async function sendTorrentMagnetShare(toUser, magnetText, { win } = {}) {
 function downloadPmHistory() {
   const d = loadPmHistory();
   const json = JSON.stringify(d, null, 2);
-  downloadTextFile(`echochat_pm_history_${currentUser}_${new Date().toISOString().slice(0,10)}.json`, json);
+  downloadTextFile(`hui_pm_history_${currentUser}_${new Date().toISOString().slice(0,10)}.json`, json);
 }
 
 function ensureDmHistoryRendered(win, peer) {

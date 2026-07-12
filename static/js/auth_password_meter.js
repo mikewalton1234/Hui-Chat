@@ -7,7 +7,7 @@
   const DEFAULT_COMMON_WEAK = [
     'password','password1','password12','password123','password1234','passw0rd',
     'qwerty','qwerty123','letmein','welcome','welcome1','admin','admin123',
-    'administrator','changeme','defaultpassword','echochat','echochat123',
+    'administrator','changeme','defaultpassword','hui','hui-chat123',
     'mikeschatserver','mikeserver','iloveyou','abc123','12345678','123456789','1234567890'
   ];
 
@@ -61,7 +61,7 @@
   }
 
   function isDigitPaddedWeakSeed(compacted){
-    const seeds = ['administrator','defaultpassword','mikeschatserver','changeme','mikeserver','echochat','iloveyou','letmein','welcome','qwerty','admin'];
+    const seeds = ['administrator','defaultpassword','mikeschatserver','changeme','mikeserver','hui','iloveyou','letmein','welcome','qwerty','admin'];
     return seeds.some(seed => {
       if (compacted.startsWith(seed)){
         const rest = compacted.slice(seed.length);
@@ -254,5 +254,5 @@
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initAll);
   else initAll();
-  window.EchoChatPasswordMeter = { initAll };
+  window.HuiChatPasswordMeter = { initAll };
 })();

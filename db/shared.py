@@ -12,7 +12,7 @@ from psycopg2.pool import ThreadedConnectionPool
 
 JSON_ROOMS_PATH = os.path.join(Path(__file__).resolve().parent.parent, "chat_rooms.json")
 MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
-SCHEMA_META_TABLE = "echochat_schema_meta"
+SCHEMA_META_TABLE = "hui_schema_meta"
 
 
 @dataclass(frozen=True)

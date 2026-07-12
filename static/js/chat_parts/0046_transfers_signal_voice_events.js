@@ -328,7 +328,7 @@ socket.on("voice_dm_offer", async ({ sender, call_id, offer, ice_restart }) => {
       voiceDeclineDmCall(peer, "Not accepted");
       return;
     }
-    const offerCollision = !!(call.pc._echoMakingOffer || call.pc.signalingState !== "stable");
+    const offerCollision = !!(call.pc._huiMakingOffer || call.pc.signalingState !== "stable");
     const polite = !call.isCaller;
     if (!polite && offerCollision && !ice_restart) return;
     if (offerCollision && call.pc.setLocalDescription) {
@@ -423,9 +423,9 @@ socket.on("voice_room_user_left", ({ room, username }) => {
   if (!VOICE_STATE.room.joined || VOICE_STATE.room.name !== room) return;
   if (!username) return;
   try { voiceSetMediaStatus(room, username, { voice_on: false, webcam_on: false }); } catch {}
-  try { if (typeof echoCamSetViewerApproved === "function") echoCamSetViewerApproved(room, username, false); } catch {}
-  try { if (typeof echoCamRemoveIncomingRequest === "function") echoCamRemoveIncomingRequest(room, username); } catch {}
-  try { if (typeof echoCamRemoveRemoteVideo === "function") echoCamRemoveRemoteVideo(username); } catch {}
+  try { if (typeof huiCamSetViewerApproved === "function") huiCamSetViewerApproved(room, username, false); } catch {}
+  try { if (typeof huiCamRemoveIncomingRequest === "function") huiCamRemoveIncomingRequest(room, username); } catch {}
+  try { if (typeof huiCamRemoveRemoteVideo === "function") huiCamRemoveRemoteVideo(username); } catch {}
   const obj = VOICE_STATE.room.peers.get(username);
   if (obj) {
     try { voiceStopAutoQualityMonitor(`room-${room}-${username}`); } catch {}
@@ -470,9 +470,9 @@ socket.on("voice_room_offer", async ({ room, sender, offer, ice_restart }) => {
   if (!obj || !obj.pc) return;
   const pc = obj.pc;
   try {
-    const offerCollision = !!(pc._echoMakingOffer || pc.signalingState !== "stable");
-    pc._echoIgnoreOffer = !pc._echoPolite && offerCollision;
-    if (pc._echoIgnoreOffer) return;
+    const offerCollision = !!(pc._huiMakingOffer || pc.signalingState !== "stable");
+    pc._huiIgnoreOffer = !pc._huiPolite && offerCollision;
+    if (pc._huiIgnoreOffer) return;
     if (offerCollision && pc.setLocalDescription) {
       try { await pc.setLocalDescription({ type: "rollback" }); } catch {}
     }
@@ -505,7 +505,7 @@ socket.on("voice_room_ice", async ({ room, sender, candidate }) => {
   const obj = VOICE_STATE.room.peers.get(peer);
   if (!obj || !obj.pc || !candidate) return;
   try {
-    if (obj.pc._echoIgnoreOffer) return;
+    if (obj.pc._huiIgnoreOffer) return;
     if (!obj.pc.remoteDescription) {
       try { voiceRoomQueueIce(peer, candidate); } catch {}
       return;
