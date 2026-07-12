@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static Socket.IO authorization checks for Echo-Chat.
+"""Static Socket.IO authorization checks for Hui Chat.
 
 This doctor intentionally does not connect to PostgreSQL. It verifies the most
 important realtime security invariants for the split realtime/*.py handler
@@ -242,7 +242,7 @@ def main() -> int:
             failures.append(f"send-like event missing sanction gate: {event}")
 
     voice = (ROOT / "realtime" / "voice.py").read_text(encoding="utf-8")
-    if "return False" not in voice[voice.find("def _webcam_room_member"):voice.find("# Echo webcam webcam view request controls")]:
+    if "return False" not in voice[voice.find("def _webcam_room_member"):voice.find("# Hui webcam webcam view request controls")]:
         failures.append("webcam target-room membership helper must fail closed")
 
     rooms = (ROOT / "realtime" / "rooms.py").read_text(encoding="utf-8")

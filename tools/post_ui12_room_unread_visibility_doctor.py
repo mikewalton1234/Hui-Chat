@@ -8,7 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 MIN_BETA = 385
-ZIP = "Echo-Chat-v0.11.0-beta.385-post-ui12-room-unread-visibility.zip"
+ZIP = "Hui-Chat-v0.11.0-beta.385-post-ui12-room-unread-visibility.zip"
 checks: list[str] = []
 
 
@@ -49,7 +49,7 @@ if beta < MIN_BETA:
 
 for rel in [
     "README.md",
-    f"Echo-Chat_Front-End_UI_Audit_Checklist_beta{beta}.md",
+    f"Hui-Chat_Front-End_UI_Audit_Checklist_beta{beta}.md",
     "docs/RELEASE_HANDOFF.md",
     "docs/UPGRADE_ROLLBACK.md",
     "docs/RELEASE_PACKAGE.md",
@@ -95,7 +95,7 @@ for token in [
     ZIP,
     "Mobile Rooms/Hub panels",
 ]:
-    require(f"Echo-Chat_Front-End_UI_Audit_Checklist_beta{beta}.md", token)
+    require(f"Hui-Chat_Front-End_UI_Audit_Checklist_beta{beta}.md", token)
 
 for token in [
     "python tools/post_ui12_room_unread_visibility_doctor.py",

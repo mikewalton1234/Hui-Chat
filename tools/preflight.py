@@ -17,7 +17,7 @@ from preflight import run_preflight, format_preflight_report
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Echo-Chat preflight tool for the configured server")
+    p = argparse.ArgumentParser(description="Hui Chat preflight tool for the configured server")
     p.add_argument("--config", default="server_config.json", help="path to server config JSON")
     p.add_argument("--no-db", action="store_true", help="skip the live database check")
     return p.parse_args()

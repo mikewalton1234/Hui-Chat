@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Echo-Chat config doctor.
+"""Hui Chat config doctor.
 
 Runs the same preflight checks as startup, but defaults to a no-database mode so
 an operator can validate JSON, secrets/cookies, upload paths, Socket.IO settings,
@@ -25,7 +25,7 @@ from preflight import format_preflight_report, run_preflight
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Echo-Chat configuration doctor")
+    parser = argparse.ArgumentParser(description="Hui Chat configuration doctor")
     parser.add_argument("--config", default="server_config.json", help="path to server config JSON")
     parser.add_argument("--include-db", action="store_true", help="also run the live PostgreSQL/database check")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")

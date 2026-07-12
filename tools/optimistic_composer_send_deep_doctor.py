@@ -6,7 +6,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.11.0-beta.380"
-ZIP = "Echo-Chat-v0.11.0-beta.380-optimistic-composer-deep-recheck.zip"
+ZIP = "Hui-Chat-v0.11.0-beta.380-optimistic-composer-deep-recheck.zip"
 MIN_BETA = 380
 
 def read(rel: str) -> str:
@@ -35,7 +35,7 @@ windows = read("static/js/chat_parts/0018_windows_manager.js")
 embed = read("static/js/chat_parts/0040_room_browser_polling_embed.js")
 css = read("static/css/chat.css")
 notes = read("OPTIMISTIC_COMPOSER_SEND_HOTFIX_NOTES.md")
-checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta380.md")
+checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta380.md")
 readme = read("README.md")
 
 for token in [
@@ -75,7 +75,7 @@ for token in [
     "Hotfix deep recheck — Optimistic composer failure recovery",
     ZIP,
 ]:
-    require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta380.md")
+    require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta380.md")
 
 require(readme, "Optimistic composer deep recheck beta.380", "README.md")
 print("PASS: beta.380 optimistic composer deep recheck static checks passed")

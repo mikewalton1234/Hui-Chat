@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static moderation/sanctions checks for Echo-Chat beta builds.
+"""Static moderation/sanctions checks for Hui Chat beta builds.
 
 This does not connect to PostgreSQL.  It catches the specific regression class
 where active sanctions are queried case-sensitively or where an expired newest

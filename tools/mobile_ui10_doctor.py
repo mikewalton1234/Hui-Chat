@@ -18,7 +18,7 @@ if version != "0.11.0-beta.377":
 
 mobile_css = read("static/css/mobile.css")
 mobile_js = read("static/js/chat_parts/0050_mobile_layout.js")
-checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta376.md")
+checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta376.md")
 notes = read("UI10_MOBILE_RESPONSIVE_PASS_NOTES.md")
 
 css_tokens = [
@@ -51,7 +51,7 @@ for token in js_tokens:
     if token not in mobile_js:
         fail(f"missing JS token: {token}")
 
-for token in ["Current version: **0.11.0-beta.377**", "UI10 — Mobile/responsive pass", "Echo-Chat-v0.11.0-beta.377-ui10-deep-mobile-responsive-recheck.zip"]:
+for token in ["Current version: **0.11.0-beta.377**", "UI10 — Mobile/responsive pass", "Hui-Chat-v0.11.0-beta.377-ui10-deep-mobile-responsive-recheck.zip"]:
     if token not in checklist:
         fail(f"missing checklist token: {token}")
 

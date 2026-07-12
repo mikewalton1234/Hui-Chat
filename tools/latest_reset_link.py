@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Print the latest locally mirrored Echo-Chat password reset link.
+"""Print the latest locally mirrored Hui Chat password reset link.
 
-This reads logs/reset_links.log by default. Echo-Chat writes this file only for
+This reads logs/reset_links.log by default. Hui Chat writes this file only for
 localhost/LAN reset requests unless password_reset_spool_allow_remote is enabled.
 It exists for development and deliverability troubleshooting when SMTP accepts a
 message but the inbox provider hides, delays, blocks, or quarantines it.

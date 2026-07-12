@@ -36,22 +36,22 @@ group = read('static/js/chat_parts/0043_group_history_dm_windows.js')
 css = read('static/css/chat.css')
 mobile = read('static/css/mobile.css')
 notes = read('UI11_VOICE_WEBCAM_UI_NOTES.md')
-checklist = read('Echo-Chat_Front-End_UI_Audit_Checklist_beta377.md')
+checklist = read('Hui-Chat_Front-End_UI_Audit_Checklist_beta377.md')
 
 for token in [
     'actionLocks: new Set()',
-    'function echoMediaIsBusy',
-    'async function echoMediaWithBusy',
-    'function echoCamRefreshDiagnostics',
-    'function echoCamStopViewing',
+    'function huiMediaIsBusy',
+    'async function huiMediaWithBusy',
+    'function huiCamRefreshDiagnostics',
+    'function huiCamStopViewing',
     'Stop camera',
     'Stop viewing',
-    'return echoMediaWithBusy("voice", room',
-    'return echoMediaWithBusy("cam", room',
-    'return echoMediaWithBusy("view", room, owner',
-    'return echoMediaWithBusy("respond", room, viewer',
-    'window.echoCamStopViewing = echoCamStopViewing',
-    'window.echoMediaIsBusy = echoMediaIsBusy',
+    'return huiMediaWithBusy("voice", room',
+    'return huiMediaWithBusy("cam", room',
+    'return huiMediaWithBusy("view", room, owner',
+    'return huiMediaWithBusy("respond", room, viewer',
+    'window.huiCamStopViewing = huiCamStopViewing',
+    'window.huiMediaIsBusy = huiMediaIsBusy',
 ]:
     require(webcam, token, 'static/js/chat_parts/0012_webcam_ui.js')
 
@@ -114,9 +114,9 @@ for token in [
 for token in [
     'Current version: **0.11.0-beta.377**',
     'UI11 — Voice/webcam UI',
-    'Echo-Chat-v0.11.0-beta.377-ui11-voice-webcam-ui.zip',
+    'Hui-Chat-v0.11.0-beta.377-ui11-voice-webcam-ui.zip',
     'UI12 — Final front-end release smoke and handoff',
 ]:
-    require(checklist, token, 'Echo-Chat_Front-End_UI_Audit_Checklist_beta377.md')
+    require(checklist, token, 'Hui-Chat_Front-End_UI_Audit_Checklist_beta377.md')
 
 print('PASS: UI11 voice/webcam UI static checks passed')

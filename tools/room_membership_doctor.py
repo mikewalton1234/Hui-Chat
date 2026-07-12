@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static room catalog/custom-room/invite membership checks for Echo-Chat.
+"""Static room catalog/custom-room/invite membership checks for Hui Chat.
 
 This doctor verifies S13 invariants without a live database:
 

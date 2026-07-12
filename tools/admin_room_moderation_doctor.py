@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static admin room/moderation tooling checks for Echo-Chat.
+"""Static admin room/moderation tooling checks for Hui Chat.
 
 This doctor verifies S14 invariants without a live database:
 

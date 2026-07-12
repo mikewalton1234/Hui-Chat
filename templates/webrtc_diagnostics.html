@@ -37,7 +37,7 @@
   <main class="diagShell">
     <section class="diagHero">
       <h1>WebRTC Diagnostics</h1>
-      <p>Run this in the same browser you use for Echo-Chat. It checks secure context, camera/microphone permissions, configured STUN/TURN servers, ICE connectivity, selected candidate type, and camera capture errors.</p>
+      <p>Run this in the same browser you use for Hui Chat. It checks secure context, camera/microphone permissions, configured STUN/TURN servers, ICE connectivity, selected candidate type, and camera capture errors.</p>
       <div class="diagActions">
         <button id="diagRun" class="diagBtn primary" type="button">Run diagnostics</button>
         <button id="diagStop" class="diagBtn danger" type="button">Stop camera/mic</button>
@@ -69,11 +69,11 @@
   </main>
 
   <script nonce="{{ csp_nonce }}">
-    window.ECHOCHAT_WEBRTC_DIAG = {{ diag_config|tojson }};
+    window.HUI_WEBRTC_DIAG = {{ diag_config|tojson }};
   </script>
   <script nonce="{{ csp_nonce }}">
   (function(){
-    const cfg = window.ECHOCHAT_WEBRTC_DIAG || {};
+    const cfg = window.HUI_WEBRTC_DIAG || {};
     const report = { started_at: null, finished_at: null, user: cfg.username || '', app_version: cfg.app_version || '', checks: [], config: cfg.safe_config || {}, results: {} };
     const rowsEl = document.getElementById('diagRows');
     const jsonEl = document.getElementById('diagJson');
@@ -103,7 +103,7 @@
         pc2.onicecandidate=e=>{ if(e.candidate) pc1.addIceCandidate(e.candidate).catch(()=>{}); };
         pc1.oniceconnectionstatechange=()=>events.push(['pc1.ice',pc1.iceConnectionState,Date.now()]);
         pc2.oniceconnectionstatechange=()=>events.push(['pc2.ice',pc2.iceConnectionState,Date.now()]);
-        const dc=pc1.createDataChannel('echochat-diagnostics');
+        const dc=pc1.createDataChannel('hui-diagnostics');
         dc.onopen=()=>{ opened=true; try{dc.send('ping')}catch{}; };
         pc2.ondatachannel=e=>{ e.channel.onmessage=()=>{}; };
         const offer=await pc1.createOffer(); await pc1.setLocalDescription(offer); await pc2.setRemoteDescription(offer);
@@ -124,7 +124,7 @@
       add('getUserMedia', (navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?'pass':'fail', (navigator.mediaDevices&&navigator.mediaDevices.getUserMedia)?'Camera/microphone capture API is available.':'MediaDevices.getUserMedia is unavailable.');
       const camPolicy=ppAllows('camera'), micPolicy=ppAllows('microphone');
       add('permissions policy', (camPolicy===false||micPolicy===false)?'fail':'pass', `camera=${camPolicy===null?'unknown':camPolicy}, microphone=${micPolicy===null?'unknown':micPolicy}`);
-      add('server media mode', cfg.safe_config?.features?.webcam===false?'warn':'pass', `${cfg.safe_config?.av_label || 'Echo media'} · webcam=${cfg.safe_config?.features?.webcam!==false}`);
+      add('server media mode', cfg.safe_config?.features?.webcam===false?'warn':'pass', `${cfg.safe_config?.av_label || 'Hui media'} · webcam=${cfg.safe_config?.features?.webcam!==false}`);
       add('ICE configuration', cfg.safe_config?.ice_summary?.turn_configured?'pass':'warn', cfg.safe_config?.ice_summary?.recommendation || 'No ICE summary available.', cfg.safe_config?.ice_summary||{});
       add('ICE servers privacy', 'pass', 'TURN credentials are used only for the browser connectivity test and are omitted from copied report JSON.');
       setSummary('sumBrowser', browserOk?'pass':'fail', browserOk?'OK':'Blocked', browserOk?'Browser basics are available.':'Fix HTTPS/browser WebRTC support first.');

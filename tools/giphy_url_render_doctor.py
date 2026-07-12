@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static doctor for GIPHY URL handling in Echo-Chat.
+"""Static doctor for GIPHY URL handling in Hui Chat.
 
 The GIF picker must send the exact rendition URL returned by the server-side
 GIPHY proxy. Rewriting selected URLs to a reconstructed /media/<id>/giphy.gif

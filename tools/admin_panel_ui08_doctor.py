@@ -21,7 +21,7 @@ def require(text: str, token: str, rel: str) -> None:
 def main() -> None:
     admin = read("admin_panel_inject.py")
     notes = read("UI08_ADMIN_PANEL_UI_NOTES.md") + "\n" + read("UI08_ADMIN_PANEL_DEEP_RECHECK_NOTES.md")
-    checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta370.md")
+    checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta370.md")
 
     for token in [
         "v6: UI08 deep recheck",
@@ -59,7 +59,7 @@ def main() -> None:
         require(notes, token, "UI08_ADMIN_PANEL_UI_NOTES.md")
 
     for token in ["UI08 — Admin panel UI", "beta.370", "UI09 — Settings modal"]:
-        require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta370.md")
+        require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta370.md")
 
     print("✅ UI08 admin panel UI doctor passed")
 

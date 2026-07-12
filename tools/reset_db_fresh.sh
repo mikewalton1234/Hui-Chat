@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Echo-Chat: wipe & recreate the configured PostgreSQL database.
+# Hui Chat: wipe & recreate the configured PostgreSQL database.
 #
 # ⚠️  DESTRUCTIVE: deletes ALL data (users, rooms, messages, keys, etc.)
 # Creates a backup first (if pg_dump exists).
@@ -16,8 +16,8 @@ try:
     data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
 except Exception:
     data = {}
-raw = str(data.get("server_name") or "Echo-Chat").replace("\r", " ").replace("\n", " ").strip()
-print(raw or "Echo-Chat")
+raw = str(data.get("server_name") or "Hui Chat").replace("\r", " ").replace("\n", " ").strip()
+print(raw or "Hui Chat")
 PYNAME
 )"
 trap 'echo "❌ Reset failed. Ensure ${SERVER_NAME} is stopped and your Postgres role can DROP/CREATE the DB. If needed, re-run with a superuser (e.g. psql -U postgres) or adjust DSN." >&2' ERR
@@ -80,11 +80,11 @@ if [[ -z "${DBUSER}" || ! "${DBUSER}" =~ ^[A-Za-z0-9_]+$ ]]; then
 fi
 
 if [[ "${DBNAME,,}" == "postgres" || "${DBNAME,,}" == "template0" || "${DBNAME,,}" == "template1" ]]; then
-  echo "❌ Refusing to reset protected PostgreSQL database '${DBNAME}'. Choose a dedicated Echo-Chat database." >&2
+  echo "❌ Refusing to reset protected PostgreSQL database '${DBNAME}'. Choose a dedicated Hui Chat database." >&2
   exit 1
 fi
 
-if [[ "${ECHOCHAT_RESET_CONFIRM:-}" != "1" ]]; then
+if [[ "${HUI_RESET_CONFIRM:-}" != "1" ]]; then
   echo "⚠️  This will DROP and recreate database '${DBNAME}' for ${SERVER_NAME}." >&2
   read -r -p "Type RESET ${DBNAME} to continue: " CONFIRM
   if [[ "${CONFIRM}" != "RESET ${DBNAME}" ]]; then

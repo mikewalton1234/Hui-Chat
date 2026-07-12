@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Echo-Chat quick self-signed HTTPS setup (dev/LAN)
+# Hui Chat quick self-signed HTTPS setup (dev/LAN)
 # - Generates cert/key under ./certs/
 # - Updates (or creates) ./server_config.json to enable https
 #
@@ -21,18 +21,18 @@ try:
     data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
 except Exception:
     data = {}
-raw = str(data.get("server_name") or "Echo-Chat").replace("\r", " ").replace("\n", " ").strip()
-print(raw or "Echo-Chat")
+raw = str(data.get("server_name") or "Hui Chat").replace("\r", " ").replace("\n", " ").strip()
+print(raw or "Hui Chat")
 PYNAME
 )"
 
 mkdir -p "${CERT_DIR}"
 
-CRT="${CERT_DIR}/echochat.crt"
-KEY="${CERT_DIR}/echochat.key"
+CRT="${CERT_DIR}/hui.crt"
+KEY="${CERT_DIR}/hui.key"
 OPENSSL_CNF="${CERT_DIR}/openssl_san.cnf"
 
-HOSTNAME="$(hostname 2>/dev/null || echo echochat)"
+HOSTNAME="$(hostname 2>/dev/null || echo hui)"
 # best-effort IP discovery (space separated)
 IPS="$(hostname -I 2>/dev/null || true)"
 
@@ -94,8 +94,8 @@ cfg_path = Path(r"${CFG}")
 data = json.loads(cfg_path.read_text("utf-8") or "{}")
 
 data["https"] = True
-data["ssl_cert_file"] = "certs/echochat.crt"
-data["ssl_key_file"] = "certs/echochat.key"
+data["ssl_cert_file"] = "certs/hui.crt"
+data["ssl_key_file"] = "certs/hui.key"
 # cookie_secure should be True when https is enabled
 data["cookie_secure"] = True
 

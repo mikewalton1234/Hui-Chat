@@ -50,7 +50,7 @@ def main() -> int:
     cleanup_paths: list[Path] = []
     symlink_created = False
 
-    with tempfile.TemporaryDirectory(prefix="echochat-s20-deep-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="hui-s20-deep-") as tmp:
         tmp_path = Path(tmp)
         unique = uuid.uuid4().hex
         tokens = {

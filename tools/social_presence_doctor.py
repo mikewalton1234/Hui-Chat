@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static friends/blocks/notifications/presence backend checks for Echo-Chat.
+"""Static friends/blocks/notifications/presence backend checks for Hui Chat.
 
 This doctor verifies S12 invariants without requiring a live DB:
 

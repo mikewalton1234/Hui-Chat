@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Echo-Chat trusted localhost/LAN HTTPS setup using mkcert.
+# Hui Chat trusted localhost/LAN HTTPS setup using mkcert.
 # - Generates a locally trusted cert/key under ./certs/
 # - Updates (or creates) ./server_config.json to enable https
 #
@@ -27,8 +27,8 @@ try:
     data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
 except Exception:
     data = {}
-raw = str(data.get("server_name") or "Echo-Chat").replace("\r", " ").replace("\n", " ").strip()
-print(raw or "Echo-Chat")
+raw = str(data.get("server_name") or "Hui Chat").replace("\r", " ").replace("\n", " ").strip()
+print(raw or "Hui Chat")
 PYNAME
 )"
 
@@ -47,10 +47,10 @@ if ! command -v mkcert >/dev/null 2>&1; then
   exit 1
 fi
 
-CRT="${CERT_DIR}/echochat-localhost.pem"
-KEY="${CERT_DIR}/echochat-localhost-key.pem"
+CRT="${CERT_DIR}/hui-localhost.pem"
+KEY="${CERT_DIR}/hui-localhost-key.pem"
 
-HOSTNAME="$(hostname 2>/dev/null || echo echochat)"
+HOSTNAME="$(hostname 2>/dev/null || echo hui)"
 IPS="$(hostname -I 2>/dev/null || true)"
 
 # Build mkcert SAN args: localhost + loopbacks + hostname + detected IPv4s
@@ -86,8 +86,8 @@ cfg_path = Path(r"${CFG}")
 data = json.loads(cfg_path.read_text("utf-8") or "{}")
 
 data["https"] = True
-data["ssl_cert_file"] = "certs/echochat-localhost.pem"
-data["ssl_key_file"] = "certs/echochat-localhost-key.pem"
+data["ssl_cert_file"] = "certs/hui-localhost.pem"
+data["ssl_key_file"] = "certs/hui-localhost-key.pem"
 data["cookie_secure"] = True
 
 cfg_path.write_text(json.dumps(data, indent=2, sort_keys=True) + "

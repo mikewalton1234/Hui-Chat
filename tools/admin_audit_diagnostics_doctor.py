@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static audit/analytics/admin diagnostics backend checks for Echo-Chat.
+"""Static audit/analytics/admin diagnostics backend checks for Hui Chat.
 
 This S17 doctor verifies browser-facing admin reporting surfaces without a live
 DB.  It checks that diagnostics and user timelines use the audit permission,

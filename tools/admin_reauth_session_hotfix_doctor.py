@@ -25,7 +25,7 @@ def main() -> None:
     setup = read("interactive_setup.py")
     security = read("docs/SECURITY.md")
     notes = read("UI08_ADMIN_REAUTH_ONCE_SESSION_HOTFIX_NOTES.md")
-    checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md")
+    checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md")
 
     for token in [
         "def _admin_reauth_once_per_session_enabled",
@@ -67,10 +67,10 @@ def main() -> None:
         "Current version: **0.11.0-beta.374**",
         "UI08 admin reauth deep recheck",
         "one password confirmation per login session",
-        "Echo-Chat-v0.11.0-beta.374-admin-reauth-deep-recheck.zip",
+        "Hui-Chat-v0.11.0-beta.374-admin-reauth-deep-recheck.zip",
         "UI10 — Mobile/responsive pass",
     ]:
-        require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md")
+        require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md")
 
     print("✅ Admin reauth once-per-session/deep recheck doctor passed")
 

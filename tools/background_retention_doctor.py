@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static background jobs, retention, and cleanup backend checks for Echo-Chat.
+"""Static background jobs, retention, and cleanup backend checks for Hui Chat.
 
 This S18 doctor verifies cleanup invariants without requiring a live database:
 

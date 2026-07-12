@@ -15,7 +15,7 @@ def require(haystack, needle, label):
 js = read('static/js/chat_parts/0047_settings_modal.js')
 html = read('templates/chat.html')
 css = read('static/css/chat.css')
-checklist = read('Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md')
+checklist = read('Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md')
 notes = read('UI09_SETTINGS_MODAL_DEEP_RECHECK_NOTES.md')
 version = read('VERSION.txt').strip()
 
@@ -66,9 +66,9 @@ for token in [
     'UI09 — Settings modal',
     'UI09 deep recheck',
     'UI10 — Mobile/responsive pass',
-    'Echo-Chat-v0.11.0-beta.374-admin-reauth-deep-recheck.zip',
+    'Hui-Chat-v0.11.0-beta.374-admin-reauth-deep-recheck.zip',
 ]:
-    require(checklist, token, 'Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md')
+    require(checklist, token, 'Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md')
 
 for token in ['0.11.0-beta.373', 'focus trap', 'stale modal state', 'roll back all unsaved previews']:
     require(notes, token, 'UI09_SETTINGS_MODAL_DEEP_RECHECK_NOTES.md')

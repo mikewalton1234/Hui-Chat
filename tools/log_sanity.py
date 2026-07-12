@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Scan recent Echo-Chat logs for startup errors and accidental secret leakage."""
+"""Scan recent Hui Chat logs for startup errors and accidental secret leakage."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ LOG_FATAL_PATTERNS: tuple[str, ...] = (
 
 LOG_SECRET_PATTERNS: tuple[re.Pattern[str], ...] = (
     re.compile(r"postgres(?:ql)?://[^\s:@]+:[^\s@]+@", re.I),
-    re.compile(r"\b(?:SECRET_KEY|ECHOCHAT_SECRET_KEY|JWT_SECRET|JWT_SECRET_KEY|ECHOCHAT_JWT_SECRET|ECHOCHAT_PROFILE_FIELD_KEY|ECHOCHAT_EMAIL_FIELD_KEY|ECHOCHAT_EMAIL_HASH_KEY|ECHOCHAT_SECURITY_BACKUP_KEY|ECHOCHAT_PRIVACY_HASH_KEY|DATABASE_URL|DB_CONNECTION_STRING)\s*=\s*[^\s]+", re.I),
+    re.compile(r"\b(?:SECRET_KEY|HUI_SECRET_KEY|JWT_SECRET|JWT_SECRET_KEY|HUI_JWT_SECRET|HUI_PROFILE_FIELD_KEY|HUI_EMAIL_FIELD_KEY|HUI_EMAIL_HASH_KEY|HUI_SECURITY_BACKUP_KEY|HUI_PRIVACY_HASH_KEY|DATABASE_URL|DB_CONNECTION_STRING)\s*=\s*[^\s]+", re.I),
     re.compile(r"\b(?:smtp_password|twilio_auth_token|turn_credential|giphy_api_key)\b\s*[:=]\s*[^\s,}]+", re.I),
 )
 
@@ -46,7 +46,7 @@ class LogCheck:
 def redact_log_snippet(line: str) -> str:
     redacted = str(line or "")
     redacted = re.sub(r"(postgres(?:ql)?://[^\s:@]+:)[^\s@]+(@)", r"\1***\2", redacted, flags=re.I)
-    redacted = re.sub(r"((?:SECRET_KEY|ECHOCHAT_SECRET_KEY|JWT_SECRET|JWT_SECRET_KEY|ECHOCHAT_JWT_SECRET|ECHOCHAT_PROFILE_FIELD_KEY|ECHOCHAT_EMAIL_FIELD_KEY|ECHOCHAT_EMAIL_HASH_KEY|ECHOCHAT_SECURITY_BACKUP_KEY|ECHOCHAT_PRIVACY_HASH_KEY|DATABASE_URL|DB_CONNECTION_STRING)\s*=\s*)[^\s]+", r"\1***", redacted, flags=re.I)
+    redacted = re.sub(r"((?:SECRET_KEY|HUI_SECRET_KEY|JWT_SECRET|JWT_SECRET_KEY|HUI_JWT_SECRET|HUI_PROFILE_FIELD_KEY|HUI_EMAIL_FIELD_KEY|HUI_EMAIL_HASH_KEY|HUI_SECURITY_BACKUP_KEY|HUI_PRIVACY_HASH_KEY|DATABASE_URL|DB_CONNECTION_STRING)\s*=\s*)[^\s]+", r"\1***", redacted, flags=re.I)
     redacted = re.sub(r"((?:smtp_password|twilio_auth_token|turn_credential|giphy_api_key)\b\s*[:=]\s*)[^\s,}]+", r"\1***", redacted, flags=re.I)
     return redacted[:500]
 
@@ -81,7 +81,7 @@ def scan_log_sanity(paths: Iterable[Path | str]) -> list[LogCheck]:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Echo-Chat log sanity scanner")
+    parser = argparse.ArgumentParser(description="Hui Chat log sanity scanner")
     parser.add_argument("--log", action="append", default=[], help="log file to scan; may be provided more than once")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     return parser.parse_args()
@@ -96,7 +96,7 @@ def main() -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(f"Echo-Chat log sanity: {'PASS' if payload['ok'] else 'FAIL'}")
+        print(f"Hui Chat log sanity: {'PASS' if payload['ok'] else 'FAIL'}")
         for check in checks:
             status = "PASS" if check.ok else "FAIL"
             print(f"[{status}] {check.name}: {check.detail}")

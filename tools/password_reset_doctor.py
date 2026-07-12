@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Echo-Chat password reset doctor.
+"""Hui Chat password reset doctor.
 
 Diagnoses why /forgot-password did not send a reset email even when SMTP itself
 works. It checks the exact account lookup rules used by the route, duplicate
@@ -52,7 +52,7 @@ def overlay_env(settings: dict[str, Any]) -> dict[str, Any]:
     db = os.getenv("DB_CONNECTION_STRING") or os.getenv("DATABASE_URL")
     if db:
         out["database_url"] = db
-    public_base_url = os.getenv("ECHOCHAT_PUBLIC_BASE_URL") or os.getenv("PUBLIC_BASE_URL")
+    public_base_url = os.getenv("HUI_PUBLIC_BASE_URL") or os.getenv("PUBLIC_BASE_URL")
     if public_base_url:
         out["public_base_url"] = public_base_url
     return out

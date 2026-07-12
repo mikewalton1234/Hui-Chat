@@ -5,7 +5,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 VERSION = "0.11.0-beta.380"
-ZIP = "Echo-Chat-v0.11.0-beta.380-optimistic-composer-deep-recheck.zip"
+ZIP = "Hui-Chat-v0.11.0-beta.380-optimistic-composer-deep-recheck.zip"
 
 def read(rel: str) -> str:
     return (ROOT / rel).read_text(encoding="utf-8")
@@ -29,7 +29,7 @@ convo = read("static/js/chat_parts/0043_group_history_dm_windows.js")
 torrent = read("static/js/chat_parts/0006_torrent_helpers.js")
 css = read("static/css/chat.css")
 notes = read("OPTIMISTIC_COMPOSER_SEND_HOTFIX_NOTES.md")
-checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta380.md")
+checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta380.md")
 readme = read("README.md")
 
 for token in [
@@ -94,7 +94,7 @@ for token in [
     "UI12 — Final front-end release smoke and handoff",
     ZIP,
 ]:
-    require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta380.md")
+    require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta380.md")
 
 require(readme, "Optimistic composer deep recheck beta.380", "README.md")
 print("PASS: beta.380 optimistic composer send static checks passed")

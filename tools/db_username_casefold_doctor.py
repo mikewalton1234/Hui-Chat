@@ -30,7 +30,7 @@ def _load_dsn(config: str) -> str:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Read-only Echo-Chat username casefold duplicate doctor")
+    ap = argparse.ArgumentParser(description="Read-only Hui Chat username casefold duplicate doctor")
     ap.add_argument("--config", default="server_config.json")
     ap.add_argument("--json", action="store_true", help="emit machine-readable JSON")
     args = ap.parse_args()

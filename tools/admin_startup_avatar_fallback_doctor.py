@@ -56,7 +56,7 @@ def main() -> int:
             fail(f"bare inner-scope runtime call still present: {bare}")
 
     require(routes, "def _missing_avatar_fallback_response", "missing avatar fallback helper")
-    require(routes, "X-EchoChat-Avatar-Fallback", "missing avatar response header")
+    require(routes, "X-HuiChat-Avatar-Fallback", "missing avatar response header")
     require(routes, "return _missing_avatar_fallback_response(filename)", "avatar route fallback return")
     require(routes, "_render_avatar_preset_svg(\"initials\"", "generated initials fallback")
 

@@ -12,10 +12,10 @@
     (function () {
       // The packaged local file may be a small bootstrap loader. If it did not
       // expose window.io, synchronously fall back to the official browser bundle
-      // before the deferred Echo-Chat modules execute.
+      // before the deferred Hui Chat modules execute.
       try {
         if (typeof window.io === 'function') return;
-        window.ECHOCHAT_SOCKETIO_CLIENT_FALLBACK_SRC = 'https://cdn.socket.io/4.5.0/socket.io.min.js';
+        window.HUI_SOCKETIO_CLIENT_FALLBACK_SRC = 'https://cdn.socket.io/4.5.0/socket.io.min.js';
         if (document.readyState === 'loading' && typeof document.write === 'function') {
           document.write('<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"><\/script>');
         }
@@ -43,9 +43,9 @@
     window.USER_PERMS = {{ user_perms|default([], true)|tojson }};
     window.INIT_ROOMS = {{ rooms|default([], true)|tojson }};
     // Non-secret client config (keeps JS limits aligned with server settings)
-    window.ECHOCHAT_CFG = {{ client_cfg|default({}, true)|tojson }};
-    window.ECHOCHAT_DEVICE = {{ client_device|default({}, true)|tojson }};
-    window.ECHOCHAT_APP_VERSION = {{ app_version|tojson }};
+    window.HUI_CFG = {{ client_cfg|default({}, true)|tojson }};
+    window.HUI_DEVICE = {{ client_device|default({}, true)|tojson }};
+    window.HUI_APP_VERSION = {{ app_version|tojson }};
   </script>
   {% for script_path in sound_pack_script_urls|default([]) %}
   <script nonce="{{ csp_nonce }}" src="{{ script_path }}" defer></script>

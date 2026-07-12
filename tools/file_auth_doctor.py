@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static file upload/attachment/transfer authorization checks for Echo-Chat.
+"""Static file upload/attachment/transfer authorization checks for Hui Chat.
 
 This doctor verifies the server-side S10 file invariants without requiring a
 live PostgreSQL database or browser session:

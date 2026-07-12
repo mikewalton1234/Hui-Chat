@@ -41,7 +41,7 @@ admin_js = read("admin_panel_inject.py")
 setup = read("interactive_setup.py")
 server_example = read("server_config.example.json")
 notes = read("TYPING_INDICATORS_PM_GROUP_NOTES.md")
-checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta378.md")
+checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta378.md")
 readme = read("README.md")
 
 for token in [
@@ -157,9 +157,9 @@ for token in [
     'Current version: **0.11.0-beta.378**',
     'Typing indicators — Private messages and group messages',
     'UI12 — Final front-end release smoke and handoff',
-    'Echo-Chat-v0.11.0-beta.378-typing-indicators-pm-group.zip',
+    'Hui-Chat-v0.11.0-beta.378-typing-indicators-pm-group.zip',
 ]:
-    require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta378.md")
+    require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta378.md")
 
 require(readme, 'Typing indicators beta.378', 'README.md')
 print('PASS: beta.378 PM/group typing indicator static checks passed')

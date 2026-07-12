@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static profile/avatar/banner/profile-post backend checks for Echo-Chat.
+"""Static profile/avatar/banner/profile-post backend checks for Hui Chat.
 
 This doctor verifies the S11 profile invariants without requiring a live DB:
 

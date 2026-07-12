@@ -135,7 +135,7 @@ def make_client(base: str, cookie_header: str) -> SioWrap:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--base", default=os.environ.get("ECHOCHAT_BASE", "http://127.0.0.1:5000"))
+    ap.add_argument("--base", default=os.environ.get("HUI_BASE", "http://127.0.0.1:5000"))
     ap.add_argument("--user-a", default=f"smokea_{_rand_suffix()}")
     ap.add_argument("--user-b", default=f"smokeb_{_rand_suffix()}")
     ap.add_argument("--password", default="TestPassw0rd!123")

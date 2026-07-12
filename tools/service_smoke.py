@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run a small live smoke test against a running Echo-Chat service."""
+"""Run a small live smoke test against a running Hui Chat service."""
 
 from __future__ import annotations
 
@@ -34,7 +34,7 @@ class SmokeResult:
 
 
 def _fetch_status(url: str, timeout: float = 5.0) -> tuple[int | None, str]:
-    request = urllib.request.Request(url, headers={"User-Agent": "EchoChatServiceSmoke/1.0"})
+    request = urllib.request.Request(url, headers={"User-Agent": "HuiChatServiceSmoke/1.0"})
     try:
         with urllib.request.urlopen(request, timeout=timeout) as response:  # nosec B310 - operator supplied local/service URL smoke test
             return int(response.status), "ok"
@@ -66,7 +66,7 @@ def summarize(results: list[SmokeResult]) -> dict:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Echo-Chat live service launch smoke test")
+    parser = argparse.ArgumentParser(description="Hui Chat live service launch smoke test")
     parser.add_argument("--url", default="http://127.0.0.1:5000", help="running service base URL")
     parser.add_argument("--json", action="store_true", help="print machine-readable JSON")
     return parser.parse_args()
@@ -80,7 +80,7 @@ def main() -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         summary = payload["summary"]
-        print(f"Echo-Chat service smoke: {'PASS' if summary['ok'] else 'FAIL'}")
+        print(f"Hui Chat service smoke: {'PASS' if summary['ok'] else 'FAIL'}")
         print(f"Passed {summary['passed']} / {summary['total']} checks")
         for result in results:
             status = "PASS" if result.ok else "FAIL"

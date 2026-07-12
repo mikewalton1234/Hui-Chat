@@ -20,7 +20,7 @@ def require(text: str, token: str, rel: str) -> None:
 def main() -> None:
     admin = read("admin_panel_inject.py")
     notes = read("UI08_ADMIN_PANEL_DEEP_RECHECK_NOTES.md")
-    checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta370.md")
+    checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta370.md")
 
     for token in [
         "v6: UI08 deep recheck",
@@ -60,8 +60,8 @@ def main() -> None:
     for token in ["0.11.0-beta.370", "CSRF", "keyboard navigation", "stale-response guards", "duplicate-action guards"]:
         require(notes, token, "UI08_ADMIN_PANEL_DEEP_RECHECK_NOTES.md")
 
-    for token in ["Current version: **0.11.0-beta.370**", "UI08 deep recheck", "UI09 — Settings modal", "Echo-Chat-v0.11.0-beta.370-ui08-deep-admin-panel-recheck.zip"]:
-        require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta370.md")
+    for token in ["Current version: **0.11.0-beta.370**", "UI08 deep recheck", "UI09 — Settings modal", "Hui-Chat-v0.11.0-beta.370-ui08-deep-admin-panel-recheck.zip"]:
+        require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta370.md")
 
     print("✅ UI08 deep admin panel doctor passed")
 

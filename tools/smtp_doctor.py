@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Echo-Chat SMTP doctor.
+"""Hui Chat SMTP doctor.
 
 This is safer and more explicit than triggering /forgot-password repeatedly.
 It can verify TCP reachability, TLS/STARTTLS/login, send one diagnostic email,
@@ -45,15 +45,15 @@ def _server_display_name(settings: dict[str, Any] | None = None) -> str:
 
 
 ENV_OVERRIDES = [
-    "ECHOCHAT_SMTP_ENABLED", "SMTP_ENABLED",
-    "ECHOCHAT_SMTP_HOST", "SMTP_HOST",
-    "ECHOCHAT_SMTP_PORT", "SMTP_PORT",
-    "ECHOCHAT_SMTP_USERNAME", "ECHOCHAT_SMTP_USER", "SMTP_USERNAME", "SMTP_USER",
-    "ECHOCHAT_SMTP_PASSWORD", "ECHOCHAT_SMTP_PASS", "SMTP_PASSWORD", "SMTP_PASS",
-    "ECHOCHAT_SMTP_STARTTLS", "SMTP_STARTTLS",
-    "ECHOCHAT_SMTP_SSL", "SMTP_SSL",
-    "ECHOCHAT_SMTP_FROM", "SMTP_FROM",
-    "ECHOCHAT_SMTP_TIMEOUT", "SMTP_TIMEOUT",
+    "HUI_SMTP_ENABLED", "SMTP_ENABLED",
+    "HUI_SMTP_HOST", "SMTP_HOST",
+    "HUI_SMTP_PORT", "SMTP_PORT",
+    "HUI_SMTP_USERNAME", "HUI_SMTP_USER", "SMTP_USERNAME", "SMTP_USER",
+    "HUI_SMTP_PASSWORD", "HUI_SMTP_PASS", "SMTP_PASSWORD", "SMTP_PASS",
+    "HUI_SMTP_STARTTLS", "SMTP_STARTTLS",
+    "HUI_SMTP_SSL", "SMTP_SSL",
+    "HUI_SMTP_FROM", "SMTP_FROM",
+    "HUI_SMTP_TIMEOUT", "SMTP_TIMEOUT",
 ]
 
 
@@ -67,7 +67,7 @@ def env_first(*names: str) -> str | None:
 
 def smtp_username(settings: dict[str, Any]) -> str:
     return str(
-        env_first("ECHOCHAT_SMTP_USERNAME", "ECHOCHAT_SMTP_USER", "SMTP_USERNAME", "SMTP_USER")
+        env_first("HUI_SMTP_USERNAME", "HUI_SMTP_USER", "SMTP_USERNAME", "SMTP_USER")
         or settings.get("smtp_username")
         or settings.get("smtp_user")
         or ""
@@ -76,7 +76,7 @@ def smtp_username(settings: dict[str, Any]) -> str:
 
 def smtp_password(settings: dict[str, Any]) -> str:
     return str(
-        env_first("ECHOCHAT_SMTP_PASSWORD", "ECHOCHAT_SMTP_PASS", "SMTP_PASSWORD", "SMTP_PASS")
+        env_first("HUI_SMTP_PASSWORD", "HUI_SMTP_PASS", "SMTP_PASSWORD", "SMTP_PASS")
         or settings.get("smtp_password")
         or settings.get("smtp_pass")
         or ""
@@ -285,7 +285,7 @@ def main() -> int:
         if info == "invalid_from_localhost":
             print(f"Fix: set smtp_from to a real sender verified in Brevo, for example: {_server_display_name(settings)} <you@yourdomain.com>")
         elif info == "not_configured":
-            print("Fix: set smtp_enabled=true, smtp_host, smtp_username, and SMTP_PASSWORD/ECHOCHAT_SMTP_PASSWORD.")
+            print("Fix: set smtp_enabled=true, smtp_host, smtp_username, and SMTP_PASSWORD/HUI_SMTP_PASSWORD.")
         return 1
 
     print("\nNo test email sent. Add --send --to your@email.com to send one diagnostic message.")

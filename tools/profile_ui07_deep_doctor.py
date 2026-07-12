@@ -18,7 +18,7 @@ def main() -> None:
     profile = read("static/js/chat_parts/0034_profile_window.js")
     css = read("static/css/chat.css")
     notes = read("UI07_PROFILE_DEEP_RECHECK_NOTES.md")
-    checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta368.md")
+    checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta368.md")
     for token in [
         "function _profileRevokeObjectUrl",
         "function _profileSafeObjectUrl",
@@ -48,7 +48,7 @@ def main() -> None:
         require(css, token, "static/css/chat.css")
     for token in ["0.11.0-beta.368", "object URL", "stale profile", "edit-post"]:
         require(notes, token, "UI07_PROFILE_DEEP_RECHECK_NOTES.md")
-    require(checklist, "UI07 deep recheck", "Echo-Chat_Front-End_UI_Audit_Checklist_beta368.md")
+    require(checklist, "UI07 deep recheck", "Hui-Chat_Front-End_UI_Audit_Checklist_beta368.md")
     print("✅ UI07 profile UI deep doctor passed")
 
 if __name__ == "__main__":

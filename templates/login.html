@@ -97,7 +97,7 @@
           .slice(0, 96);
         const dmPwdKeyFor = (username) => {
           const token = dmUserToken(username);
-          return token ? `echochat_dm_pwd_v2:${token}` : '';
+          return token ? `hui_dm_pwd_v2:${token}` : '';
         };
         const clearAutoUnlockPassword = (username = '') => {
           const scopedKey = dmPwdKeyFor(username);
@@ -105,9 +105,9 @@
             sessionStorage.removeItem(scopedKey);
             sessionStorage.removeItem(`${scopedKey}:set_at`);
           }
-          sessionStorage.removeItem("echochat_dm_pwd");
-          sessionStorage.removeItem("echochat_dm_pwd_set_at");
-          sessionStorage.removeItem("echochat_dm_pwd_user");
+          sessionStorage.removeItem("hui_dm_pwd");
+          sessionStorage.removeItem("hui_dm_pwd_set_at");
+          sessionStorage.removeItem("hui_dm_pwd_user");
         };
         const rememberAutoUnlockPassword = (username, password) => {
           const scopedKey = dmPwdKeyFor(username);
@@ -117,11 +117,11 @@
           }
           sessionStorage.setItem(scopedKey, String(password));
           sessionStorage.setItem(`${scopedKey}:set_at`, String(Date.now()));
-          sessionStorage.setItem("echochat_dm_pwd_user", dmUserToken(username));
+          sessionStorage.setItem("hui_dm_pwd_user", dmUserToken(username));
           // Remove the beta.265-and-earlier global key so one account cannot
           // accidentally try to unlock another account's private-message key.
-          sessionStorage.removeItem("echochat_dm_pwd");
-          sessionStorage.removeItem("echochat_dm_pwd_set_at");
+          sessionStorage.removeItem("hui_dm_pwd");
+          sessionStorage.removeItem("hui_dm_pwd_set_at");
         };
 
         for (const form of Array.from(document.querySelectorAll("form"))) {
@@ -132,7 +132,7 @@
               const stage = clicked || (stageEl ? String(stageEl.value || '').trim() : 'password');
 
               if (stage === '2fa_cancel') {
-                clearAutoUnlockPassword(sessionStorage.getItem("echochat_dm_pwd_user") || '');
+                clearAutoUnlockPassword(sessionStorage.getItem("hui_dm_pwd_user") || '');
                 return;
               }
               // During 2FA verification/resend, keep the password captured from the first login step.
@@ -162,7 +162,7 @@
           const params = new URLSearchParams(window.location.search || "");
           const publicMessage = (params.get("msg") || params.get("message") || "").trim();
           const reason = (params.get("reason") || "").trim();
-          const ss = (sessionStorage.getItem("echochat_logout_reason") || "").trim();
+          const ss = (sessionStorage.getItem("hui_logout_reason") || "").trim();
           const friendlyMessages = {
             password_reset_complete: "Password reset complete. Please log in with your new password.",
             login_form_expired: "The login page was refreshed after the server restarted or your old form expired. Please sign in again.",
@@ -177,7 +177,7 @@
           if (publicMessage) {
             el.style.display = "block";
             el.textContent = friendlyMessages[publicMessage] || publicMessage;
-            try { sessionStorage.removeItem("echochat_logout_reason"); } catch (e) {}
+            try { sessionStorage.removeItem("hui_logout_reason"); } catch (e) {}
             return;
           }
 
@@ -188,7 +188,7 @@
             const strong = document.createElement('strong');
             strong.textContent = 'Notice:';
             el.replaceChildren(strong, document.createTextNode(` ${cleanReason}`));
-            try { sessionStorage.removeItem("echochat_logout_reason"); } catch (e) {}
+            try { sessionStorage.removeItem("hui_logout_reason"); } catch (e) {}
           }
         } catch (e) {}
       })();

@@ -30,7 +30,7 @@ if beta_number(version) < MIN_BETA:
 
 mobile_js = read("static/js/chat_parts/0050_mobile_layout.js")
 mobile_css = read("static/css/mobile.css")
-checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta377.md")
+checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta377.md")
 notes = read("UI10_DEEP_MOBILE_RESPONSIVE_RECHECK_NOTES.md")
 
 for token in [
@@ -67,7 +67,7 @@ for token in [
     "UI11 — Voice/webcam UI",
     "Completed in beta.376",
 ]:
-    require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta377.md")
+    require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta377.md")
 
 for token in [
     "Version: **0.11.0-beta.377**",

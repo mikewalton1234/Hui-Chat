@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Echo-Chat DB utility: dedupe duplicate emails (case-insensitive).
+"""Hui Chat DB utility: dedupe duplicate emails (case-insensitive).
 
 Problem this fixes
 ------------------
@@ -18,7 +18,7 @@ This script:
 
 ⚠️ Notes
 --------
-* Some tables in Echo-Chat store usernames (TEXT) rather than user_id. Those
+* Some tables in Hui Chat store usernames (TEXT) rather than user_id. Those
   historical rows will remain with the old username string; this is normally
   fine in dev/test.
 * This is primarily for local/dev databases. For production, you'd usually
@@ -33,7 +33,7 @@ Usage
   python tools/dedupe_duplicate_emails.py --apply
 
   # explicit DSN
-  python tools/dedupe_duplicate_emails.py --dsn "postgresql://user:pass@localhost:5432/echo_db"
+  python tools/dedupe_duplicate_emails.py --dsn "postgresql://user:pass@localhost:5432/hui_db"
 
 Exit codes:
   0 success
@@ -71,7 +71,7 @@ def _print_priv_help(db_user: str, db_name: str, missing_tables: list[str] | Non
         print(f"Missing privileges on: {mt}")
     print("\nFix options:")
     print("  A) Run this script as the DB owner/superuser (peer auth):")
-    print(f"     sudo -u postgres -E bash -lc 'cd /path/to/Echo-Chat && \\")
+    print(f"     sudo -u postgres -E bash -lc 'cd /path/to/Hui Chat && \\")
     print("       source .venv/bin/activate && \\")
     print(f"       python tools/dedupe_duplicate_emails.py --dsn \"dbname={db_name} user=postgres\"'")
     print("\n  B) Or grant your app DB role broad privileges (dev-friendly):")

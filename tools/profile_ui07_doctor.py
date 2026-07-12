@@ -20,7 +20,7 @@ def main() -> None:
     avatar = read("static/js/chat_parts/0033_avatar_presets_upload.js")
     css = read("static/css/chat.css")
     notes = read("UI07_PROFILE_AVATAR_BANNER_POST_UI_NOTES.md")
-    checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta368.md")
+    checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta368.md")
 
     for token in [
         "const EC_PROFILE_POST_ACTION_PENDING = new Set()",
@@ -62,7 +62,7 @@ def main() -> None:
 
     for token in ["0.11.0-beta.367", "Profile post composer", "busy lock", "Touch/coarse-pointer"]:
         require(notes, token, "UI07_PROFILE_AVATAR_BANNER_POST_UI_NOTES.md")
-    require(checklist, "[x] **UI07 — Profile/avatar/banner/post UI**", "Echo-Chat_Front-End_UI_Audit_Checklist_beta367.md")
+    require(checklist, "[x] **UI07 — Profile/avatar/banner/post UI**", "Hui-Chat_Front-End_UI_Audit_Checklist_beta367.md")
     print("✅ UI07 profile UI doctor passed")
 
 if __name__ == "__main__":

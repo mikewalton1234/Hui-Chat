@@ -17,7 +17,7 @@ from database import init_db_pool, apply_migrations, list_available_migrations, 
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Echo-Chat migration tool for the configured server")
+    p = argparse.ArgumentParser(description="Hui Chat migration tool for the configured server")
     p.add_argument("--config", default="server_config.json", help="path to server config JSON")
     p.add_argument("--list", action="store_true", help="list available migrations")
     p.add_argument("--schema-version", action="store_true", help="print current schema version")

@@ -20,7 +20,7 @@ js = read('static/js/chat_parts/0047_settings_modal.js')
 html = read('templates/chat.html')
 css = read('static/css/chat.css')
 notes = read('UI09_SETTINGS_MODAL_DEEP_RECHECK_NOTES.md')
-checklist = read('Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md')
+checklist = read('Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md')
 
 for token in [
     'const EC_SETTINGS_BUSY_CONTROL_IDS',
@@ -59,6 +59,6 @@ for token in ['Version: **0.11.0-beta.373**', 'focus trap', 'save-state guards',
     require(notes, token, 'UI09_SETTINGS_MODAL_DEEP_RECHECK_NOTES.md')
 
 for token in ['Current version: **0.11.0-beta.374**', 'UI09 deep recheck', 'UI10 — Mobile/responsive pass']:
-    require(checklist, token, 'Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md')
+    require(checklist, token, 'Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md')
 
 print('settings_modal_ui09_deep_doctor: PASS')

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static admin user/account tooling checks for Echo-Chat.
+"""Static admin user/account tooling checks for Hui Chat.
 
 This S15 doctor verifies account-management invariants without a live database:
 

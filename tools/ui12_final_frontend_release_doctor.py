@@ -7,7 +7,7 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 UI12_VERSION = "0.11.0-beta.382"
 MIN_BETA = 382
-ZIP = "Echo-Chat-v0.11.0-beta.382-ui12-final-frontend-release.zip"
+ZIP = "Hui-Chat-v0.11.0-beta.382-ui12-final-frontend-release.zip"
 
 checks: list[str] = []
 
@@ -40,7 +40,7 @@ if beta_number(version) < MIN_BETA:
 
 for rel in [
     "UI12_FINAL_FRONTEND_RELEASE_NOTES.md",
-    "Echo-Chat_Front-End_UI_Audit_Checklist_beta382.md",
+    "Hui-Chat_Front-End_UI_Audit_Checklist_beta382.md",
 ]:
     require(rel, UI12_VERSION)
 
@@ -64,7 +64,7 @@ for token in [
     ZIP,
     "beta.381 Hotfix — missed message notification icon",
 ]:
-    require("Echo-Chat_Front-End_UI_Audit_Checklist_beta382.md", token)
+    require("Hui-Chat_Front-End_UI_Audit_Checklist_beta382.md", token)
 
 for token in [
     "UI12 final front-end release beta.382",
@@ -81,7 +81,7 @@ for token in [
     require("docs/RELEASE_HANDOFF.md", token)
 
 for token in [
-    "Echo-Chat_Front-End_UI_Audit_Checklist_beta",
+    "Hui-Chat_Front-End_UI_Audit_Checklist_beta",
     "server_checklists = sorted",
     "latest_server_checklist",
 ]:

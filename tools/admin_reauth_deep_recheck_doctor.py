@@ -29,7 +29,7 @@ def main() -> None:
     admin = read("admin_panel_inject.py")
     routes = read("routes_admin_tools.py")
     notes = read("UI08_ADMIN_REAUTH_DEEP_RECHECK_NOTES.md")
-    checklist = read("Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md")
+    checklist = read("Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md")
     version = read("VERSION.txt").strip()
 
     for token in [
@@ -69,10 +69,10 @@ def main() -> None:
         "Current version: **0.11.0-beta.374**",
         "UI08 admin reauth deep recheck",
         "repeated prompt race/session safety",
-        "Echo-Chat-v0.11.0-beta.374-admin-reauth-deep-recheck.zip",
+        "Hui-Chat-v0.11.0-beta.374-admin-reauth-deep-recheck.zip",
         "UI10 — Mobile/responsive pass",
     ]:
-        require(checklist, token, "Echo-Chat_Front-End_UI_Audit_Checklist_beta374.md")
+        require(checklist, token, "Hui-Chat_Front-End_UI_Audit_Checklist_beta374.md")
 
     if beta_number(version) < MIN_BETA:
         fail(f"VERSION.txt is {version!r}, expected beta.{MIN_BETA} or newer")

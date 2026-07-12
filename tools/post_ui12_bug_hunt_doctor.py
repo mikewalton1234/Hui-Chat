@@ -8,7 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 MIN_BETA = 383
-ZIP = "Echo-Chat-v0.11.0-beta.383-post-ui12-bug-hunt.zip"
+ZIP = "Hui-Chat-v0.11.0-beta.383-post-ui12-bug-hunt.zip"
 
 checks: list[str] = []
 
@@ -49,7 +49,7 @@ if beta_number(version) < MIN_BETA:
 
 for rel in [
     "README.md",
-    f"Echo-Chat_Front-End_UI_Audit_Checklist_beta{beta_number(version)}.md",
+    f"Hui-Chat_Front-End_UI_Audit_Checklist_beta{beta_number(version)}.md",
     "docs/RELEASE_HANDOFF.md",
     "docs/UPGRADE_ROLLBACK.md",
     "docs/RELEASE_PACKAGE.md",
@@ -99,7 +99,7 @@ for token in [
     ZIP,
     "Post-UI12 bug hunt deep recheck",
 ]:
-    require("Echo-Chat_Front-End_UI_Audit_Checklist_beta383.md", token)
+    require("Hui-Chat_Front-End_UI_Audit_Checklist_beta383.md", token)
 
 for token in [
     "python tools/post_ui12_bug_hunt_doctor.py",

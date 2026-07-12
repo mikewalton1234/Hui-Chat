@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static S19 deployment/operations doctor for Echo-Chat.
+"""Static S19 deployment/operations doctor for Hui Chat.
 
 This checks the generated service templates and operator scripts for the most
 important production-safety invariants:
@@ -42,9 +42,9 @@ def _assert_contains(failures: list[str], label: str, text: str, tokens: list[st
 def main() -> int:
     failures: list[str] = []
     sample = {
-        "systemd_working_directory": "/tmp/Echo Chat S19",
-        "systemd_python": "/tmp/Echo Chat S19/.venv/bin/python",
-        "systemd_env_file": "/etc/echo chat/echochat.env",
+        "systemd_working_directory": "/tmp/Hui Chat S19",
+        "systemd_python": "/tmp/Hui Chat S19/.venv/bin/python",
+        "systemd_env_file": "/etc/hui chat/hui.env",
         "rate_limit_storage_uri": "rediss://127.0.0.1:6380/0",
         "socketio_message_queue": "redis://127.0.0.1:6379/1",
         "shared_state_redis_url": "redis://127.0.0.1:6379/2",
@@ -58,26 +58,26 @@ def main() -> int:
     janitor = generate_janitor_service(sample)
 
     _assert_contains(failures, "single systemd service", single, [
-        'WorkingDirectory="/tmp/Echo Chat S19"',
-        'EnvironmentFile="/etc/echo chat/echochat.env"',
+        'WorkingDirectory="/tmp/Hui Chat S19"',
+        'EnvironmentFile="/etc/hui chat/hui.env"',
         "ExecStartPre=",
         "tools/config_doctor.py --config",
         "--redis-socketio-check",
-        "ECHOCHAT_CONFIG=",
-        "ECHOCHAT_PRODUCTION_WORKERS=1",
-        "ECHOCHAT_WORKERS=1",
+        "HUI_CONFIG=",
+        "HUI_PRODUCTION_WORKERS=1",
+        "HUI_WORKERS=1",
         "After=network-online.target redis.service",
-        'ReadWritePaths="/tmp/Echo Chat S19/secure dm"',
-        'ReadWritePaths="/tmp/Echo Chat S19/server_config.json"',
+        'ReadWritePaths="/tmp/Hui Chat S19/secure dm"',
+        'ReadWritePaths="/tmp/Hui Chat S19/server_config.json"',
     ])
-    if "ECHOCHAT_WORKERS=2" in single or "WEB_CONCURRENCY=2" in single:
+    if "HUI_WORKERS=2" in single or "WEB_CONCURRENCY=2" in single:
         failures.append("single systemd service appears to allow unsafe multi-worker Socket.IO startup")
 
     _assert_contains(failures, "instance systemd service", instance, [
-        "echochat@.service",
-        'ECHOCHAT_BIND="127.0.0.1:%i"',
-        "ECHOCHAT_PRODUCTION_WORKERS=1",
-        "ECHOCHAT_WORKERS=1",
+        "hui-chat@.service",
+        'HUI_BIND="127.0.0.1:%i"',
+        "HUI_PRODUCTION_WORKERS=1",
+        "HUI_WORKERS=1",
         "--redis-socketio-check",
     ])
 
@@ -85,7 +85,7 @@ def main() -> int:
         "janitor_runner.py --config",
         "tools/config_doctor.py --config",
         "Run exactly one janitor",
-        'WorkingDirectory="/tmp/Echo Chat S19"',
+        'WorkingDirectory="/tmp/Hui Chat S19"',
         "After=network-online.target redis.service",
         "Wants=network-online.target redis.service",
     ])
@@ -112,18 +112,18 @@ def main() -> int:
     if "$PYTHON_BIN -m pip" in install_deps or "$PYTHON_BIN - <<" in install_deps:
         failures.append("install_production_deps.sh still contains unquoted $PYTHON_BIN execution")
 
-    with tempfile.TemporaryDirectory(prefix="echochat-s19-kit-") as tmp:
+    with tempfile.TemporaryDirectory(prefix="hui-s19-kit-") as tmp:
         out = Path(tmp) / "kit"
         written = write_deployment_kit(sample, out, proxy="all", settings_file=ROOT / "server_config.json", repo_root=ROOT)
         names = {Path(item.path).name for item in written}
-        for required in {"echochat.service", "echochat@.service", "echochat-janitor.service", "echochat.env.example", "install-commands.sh", "README.md"}:
+        for required in {"hui-chat.service", "hui-chat@.service", "hui-chat-janitor.service", "hui-chat.env.example", "install-commands.sh", "README.md"}:
             if required not in names:
                 failures.append(f"deployment kit did not write {required}")
         install_commands = (out / "install-commands.sh").read_text(encoding="utf-8")
         _assert_contains(failures, "generated install-commands.sh", install_commands, [
-            "sudo install -d -o echochat -g echochat -m 0750",
+            "sudo install -d -o hui -g hui -m 0750",
             "sudo systemctl daemon-reload",
-            "echochat-janitor.service",
+            "hui-chat-janitor.service",
         ])
 
     if failures:

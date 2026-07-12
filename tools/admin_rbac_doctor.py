@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Admin/RBAC static doctor for Echo-Chat.
+"""Admin/RBAC static doctor for Hui Chat.
 
 This checks the server-side admin route surface without connecting to a
 PostgreSQL database. It is intentionally conservative and is meant for release

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static admin settings/configuration backend checks for Echo-Chat.
+"""Static admin settings/configuration backend checks for Hui Chat.
 
 This S16 doctor verifies settings/config invariants without a live database:
 

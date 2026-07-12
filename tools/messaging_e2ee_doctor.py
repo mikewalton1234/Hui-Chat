@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Static messaging persistence/history/E2EE checks for Echo-Chat.
+"""Static messaging persistence/history/E2EE checks for Hui Chat.
 
 This doctor verifies server-side invariants that should hold before live browser
 QA:

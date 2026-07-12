@@ -57,7 +57,7 @@ def main() -> int:
 
     beta_suffix = version.rsplit('.', 1)[-1]
     version_synced_files = ["README.md", "docs/UPGRADE_ROLLBACK.md"]
-    frontend_checklist = f"Echo-Chat_Front-End_UI_Audit_Checklist_beta{beta_suffix}.md"
+    frontend_checklist = f"Hui-Chat_Front-End_UI_Audit_Checklist_beta{beta_suffix}.md"
     if (ROOT / frontend_checklist).exists():
         version_synced_files.append(frontend_checklist)
 
@@ -70,7 +70,7 @@ def main() -> int:
         _assert_contains(failures, rel, text, [version])
         _assert_not_contains(failures, rel, text, ["Current version: **0.11.0-beta.351**", "Version: **0.11.0-beta.351**"])
 
-    server_checklists = sorted(ROOT.glob("Echo-Chat_Server-Side_Audit_Checklist_beta*.md"))
+    server_checklists = sorted(ROOT.glob("Hui-Chat_Server-Side_Audit_Checklist_beta*.md"))
     if not server_checklists:
         failures.append("missing server-side audit checklist archive")
     else:
@@ -149,7 +149,7 @@ def main() -> int:
     # Build a temporary package and inspect it. This proves the packaging tool is
     # safe enough to run from a checkout without accidentally nesting artifacts.
     try:
-        with tempfile.TemporaryDirectory(prefix="echochat-s20-release-") as tmp:
+        with tempfile.TemporaryDirectory(prefix="hui-s20-release-") as tmp:
             out = Path(tmp) / "dist"
             cmd = [sys.executable, str(ROOT / "scripts" / "build_release_package.py"), "--output-dir", str(out), "--label", "doctor", "--json"]
             proc = subprocess.run(cmd, cwd=str(ROOT), text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=False)

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Echo-Chat: wipe ALL tables without dropping the database.
+# Hui Chat: wipe ALL tables without dropping the database.
 # Useful when you don't have permission to DROP/CREATE DATABASE.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,8 +14,8 @@ try:
     data = json.loads(path.read_text(encoding="utf-8") or "{}") if path.exists() else {}
 except Exception:
     data = {}
-raw = str(data.get("server_name") or "Echo-Chat").replace("\r", " ").replace("\n", " ").strip()
-print(raw or "Echo-Chat")
+raw = str(data.get("server_name") or "Hui Chat").replace("\r", " ").replace("\n", " ").strip()
+print(raw or "Hui Chat")
 PYNAME
 )"
 trap 'echo "❌ Schema reset failed. Ensure ${SERVER_NAME} is stopped and your Postgres role can DROP/CREATE SCHEMA public." >&2' ERR
@@ -72,11 +72,11 @@ if [[ -z "${DBUSER}" || ! "${DBUSER}" =~ ^[A-Za-z0-9_]+$ ]]; then
 fi
 
 if [[ "${DBNAME,,}" == "postgres" || "${DBNAME,,}" == "template0" || "${DBNAME,,}" == "template1" ]]; then
-  echo "❌ Refusing to wipe protected PostgreSQL database '${DBNAME}'. Choose a dedicated Echo-Chat database." >&2
+  echo "❌ Refusing to wipe protected PostgreSQL database '${DBNAME}'. Choose a dedicated Hui Chat database." >&2
   exit 1
 fi
 
-if [[ "${ECHOCHAT_RESET_CONFIRM:-}" != "1" ]]; then
+if [[ "${HUI_RESET_CONFIRM:-}" != "1" ]]; then
   echo "⚠️  This will DROP and recreate the public schema in database '${DBNAME}' for ${SERVER_NAME}." >&2
   read -r -p "Type RESET ${DBNAME} to continue: " CONFIRM
   if [[ "${CONFIRM}" != "RESET ${DBNAME}" ]]; then

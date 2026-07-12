@@ -154,7 +154,7 @@
       ['after_test_cleanup', 'After-test cleanup passed']
     ];
     function browserReleaseGateStorageKey(){
-      return 'echochat:browserReleaseGate:v1:' + window.location.host;
+      return 'hui:browserReleaseGate:v1:' + window.location.host;
     }
     function collectBrowserReleaseGateRows(){
       const checks = Array.from(document.querySelectorAll('.browserGateCheck'));
@@ -459,7 +459,7 @@
       const blob=new Blob([text],{type:'application/json'});
       const a=document.createElement('a');
       a.href=URL.createObjectURL(blob);
-      a.download='echochat-admin-test-lab-results.json';
+      a.download='hui-admin-test-lab-results.json';
       document.body.appendChild(a);
       a.click();
       setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); }, 0);

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """tools/smtp_test.py
 
-Quick SMTP smoke test for Echo-Chat config.
+Quick SMTP smoke test for Hui Chat config.
 
 Usage:
   source .venv/bin/activate
@@ -18,7 +18,7 @@ import sys
 from pathlib import Path
 
 # When this file is run as `python tools/smtp_test.py`, Python puts the
-# `tools/` directory on sys.path, not the Echo-Chat project root. Add the
+# `tools/` directory on sys.path, not the Hui Chat project root. Add the
 # project root so imports like `from emailer import send_email` work from
 # a normal terminal session.
 ROOT = Path(__file__).resolve().parents[1]
