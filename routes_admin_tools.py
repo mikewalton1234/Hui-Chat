@@ -57,6 +57,7 @@ from public_room_e2ee_audit import public_room_e2ee_impact_report
 from media_mode import client_av_config, resolve_av_mode, webcam_policy
 from account_status import effective_account_status_sql, get_effective_account_status
 from moderation import add_ip_sanction, add_sanction, expire_ip_sanctions, expire_sanctions
+from runtime_timing import timing_int
 from webrtc_ice_config import (
     apply_turn_credentials,
     ice_server_summary,
@@ -66,6 +67,8 @@ from webrtc_ice_config import (
     turn_credential_errors,
     voice_ice_servers,
 )
+from branding import BRANDING_DEFAULTS, branding_template_context, effective_branding_settings
+
 from hui_voice_protocol import (
     HUI_WEBCAM_QUALITY_PROFILES,
     hui_voice_audio_quality,
@@ -4029,6 +4032,177 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
             "cleanup_stats": cleanup_stats,
         })
 
+    # ── Settings: branding assets and startup screen ───────────────
+    def _branding_response_settings() -> dict:
+        effective = effective_branding_settings(settings, _settings_path())
+        context = branding_template_context(settings, _settings_path())
+        return {
+            "logo_enabled": bool(effective.get("branding_logo_enabled", True)),
+            "loading_screen_enabled": bool(effective.get("branding_loading_screen_enabled", True)),
+            "loading_screen_mode": str(effective.get("branding_loading_screen_mode") or "animation"),
+            "logo_asset": str(effective.get("branding_logo_asset") or BRANDING_DEFAULTS["branding_logo_asset"]),
+            "loading_asset": str(effective.get("branding_loading_asset") or BRANDING_DEFAULTS["branding_loading_asset"]),
+            "asset_revision": str(effective.get("branding_asset_revision") or "1"),
+            "logo_url": context["logo_url"],
+            "loading_url": context["loading_url"],
+        }
+
+    def _branding_image_kind(data: bytes) -> tuple[str, str] | None:
+        if data.startswith(b"\x89PNG\r\n\x1a\n"):
+            return "png", "image/png"
+        if data.startswith((b"GIF87a", b"GIF89a")):
+            return "gif", "image/gif"
+        if data.startswith(b"\xff\xd8\xff"):
+            return "jpg", "image/jpeg"
+        if len(data) >= 12 and data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+            return "webp", "image/webp"
+        return None
+
+    @app.route("/admin/settings/branding", methods=["GET", "POST"])
+    @require_permission("admin:settings")
+    def admin_settings_branding():
+        if request.method == "GET":
+            return _admin_json_response({"ok": True, "settings": _branding_response_settings()})
+
+        status = _admin_reauth_status(_actor())
+        if not status.get("ok"):
+            return _admin_reauth_required_response(status)
+
+        data = request.get_json(silent=True) or {}
+        patch = {}
+        if "logo_enabled" in data:
+            patch["branding_logo_enabled"] = bool(data.get("logo_enabled"))
+        if "loading_screen_enabled" in data:
+            patch["branding_loading_screen_enabled"] = bool(data.get("loading_screen_enabled"))
+        if "loading_screen_mode" in data:
+            mode = str(data.get("loading_screen_mode") or "animation").strip().lower()
+            if mode not in {"animation", "text"}:
+                return _admin_json_response({"ok": False, "error": "Loading-screen mode must be animation or text"}, 400)
+            patch["branding_loading_screen_mode"] = mode
+        if not patch:
+            return _admin_json_response({"ok": False, "error": "No branding changes supplied"}, 400)
+
+        patch["branding_asset_revision"] = str(int(time.time() * 1000))
+        for key, value in patch.items():
+            settings[key] = value
+        persisted = _persist_settings_patch(patch)
+        if not persisted:
+            return _admin_json_response({
+                "ok": False,
+                "error": "Branding could not be saved to server_config.json",
+                "persistence": _last_settings_persistence_meta(),
+            }, 500)
+        try:
+            log_audit_event(_actor(), "set_branding_settings", "branding", json.dumps({
+                "logo_enabled": patch.get("branding_logo_enabled"),
+                "loading_screen_enabled": patch.get("branding_loading_screen_enabled"),
+                "loading_screen_mode": patch.get("branding_loading_screen_mode"),
+            }))
+        except Exception:
+            pass
+        return _admin_json_response({
+            "ok": True,
+            "persisted": True,
+            "settings": _branding_response_settings(),
+            "reload_required": True,
+        })
+
+    @app.post("/admin/settings/branding/upload/<asset_kind>")
+    @require_permission("admin:settings")
+    def admin_settings_branding_upload(asset_kind: str):
+        status = _admin_reauth_status(_actor())
+        if not status.get("ok"):
+            return _admin_reauth_required_response(status)
+
+        kind = str(asset_kind or "").strip().lower()
+        if kind not in {"logo", "loading"}:
+            return _admin_json_response({"ok": False, "error": "Unknown branding asset type"}, 404)
+
+        upload = request.files.get("file")
+        if upload is None or not str(upload.filename or "").strip():
+            return _admin_json_response({"ok": False, "error": "Choose an image file first"}, 400)
+
+        max_bytes = 8 * 1024 * 1024 if kind == "logo" else 15 * 1024 * 1024
+        data = upload.stream.read(max_bytes + 1)
+        if not data:
+            return _admin_json_response({"ok": False, "error": "Uploaded file is empty"}, 400)
+        if len(data) > max_bytes:
+            return _admin_json_response({"ok": False, "error": f"File is too large; maximum is {max_bytes // (1024 * 1024)} MB"}, 413)
+
+        detected = _branding_image_kind(data)
+        if not detected:
+            return _admin_json_response({"ok": False, "error": "Use PNG, JPEG, GIF, or WebP. SVG is not accepted for server branding."}, 400)
+        extension, mime_type = detected
+        if kind == "loading" and extension == "jpg":
+            return _admin_json_response({"ok": False, "error": "Loading assets must be PNG, GIF, or WebP"}, 400)
+
+        revision = str(int(time.time() * 1000))
+        static_root = Path(str(current_app.static_folder or "static")).resolve()
+        target_dir = (static_root / "uploads" / "branding").resolve()
+        if static_root not in target_dir.parents:
+            return _admin_json_response({"ok": False, "error": "Invalid branding upload directory"}, 500)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        filename = f"{kind}-{revision}.{extension}"
+        target = target_dir / filename
+        temp_target = target_dir / f".{filename}.{uuid.uuid4().hex}.tmp"
+        try:
+            temp_target.write_bytes(data)
+            os.replace(temp_target, target)
+        except Exception:
+            try:
+                temp_target.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return _admin_json_response({"ok": False, "error": "Could not store the uploaded branding asset"}, 500)
+
+        relative_asset = f"uploads/branding/{filename}"
+        asset_key = "branding_logo_asset" if kind == "logo" else "branding_loading_asset"
+        patch = {asset_key: relative_asset, "branding_asset_revision": revision}
+        for key, value in patch.items():
+            settings[key] = value
+        persisted = _persist_settings_patch(patch)
+        if not persisted:
+            try:
+                target.unlink(missing_ok=True)
+            except Exception:
+                pass
+            return _admin_json_response({
+                "ok": False,
+                "error": "The asset was valid, but server_config.json could not be updated",
+                "persistence": _last_settings_persistence_meta(),
+            }, 500)
+
+        # Keep the current asset plus at most two older rollback candidates.
+        try:
+            candidates = sorted(
+                target_dir.glob(f"{kind}-*.*"),
+                key=lambda item: item.stat().st_mtime,
+                reverse=True,
+            )
+            for old_asset in candidates[3:]:
+                old_asset.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+        try:
+            log_audit_event(_actor(), "upload_branding_asset", kind, json.dumps({
+                "asset": relative_asset,
+                "mime_type": mime_type,
+                "bytes": len(data),
+            }))
+        except Exception:
+            pass
+        return _admin_json_response({
+            "ok": True,
+            "persisted": True,
+            "asset_kind": kind,
+            "bytes": len(data),
+            "mime_type": mime_type,
+            "settings": _branding_response_settings(),
+            "reload_required": True,
+        })
+
     # ── Settings: general (persisted + runtime) ───────────────────
     @app.route("/admin/settings/general", methods=["GET", "POST"])
     @require_permission("admin:settings")
@@ -5674,10 +5848,15 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
         if current_ip and ip == current_ip:
             return _admin_json_response({"ok": False, "error": "self_ip_ban_forbidden", "message": "Cannot ban your current admin IP from the admin panel."}, 403)
         reason = _admin_reason(request.form.get("reason"), "Manual IP ban")
+        default_minutes = timing_int(settings, "admin_ip_ban_default_minutes")
+        minutes, err = _bounded_int_from_form("minutes", default_minutes, 0, 60 * 24 * 365)
+        if err is not None:
+            return err
+        duration_minutes = minutes if minutes > 0 else None
 
         conn = get_db()
         try:
-            add_ip_sanction(ip, reason, actor=actor)
+            expires_at = add_ip_sanction(ip, reason, duration_minutes=duration_minutes, actor=actor)
             revocation = _revoke_sessions_for_ip(ip, actor)
             conn.commit()
             disconnected_sockets = 0
@@ -5703,7 +5882,7 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
                                 pass
             except Exception:
                 pass
-            log_audit_event(actor, "ban_ip", ip, reason)
+            log_audit_event(actor, "ban_ip", ip, f"{reason}; minutes={minutes or 'permanent'}")
             return _admin_json_response({
                 "ok": True,
                 "status": "ip_banned",
@@ -5712,6 +5891,8 @@ def register_admin_tools(app, settings, socketio=None, limiter=None):
                 "revoked_tokens": int((revocation or {}).get("revoked_tokens") or 0),
                 "affected_users": list((revocation or {}).get("affected_users") or []),
                 "disconnected_sockets": disconnected_sockets,
+                "minutes": minutes,
+                "expires_at": expires_at.isoformat() if expires_at else None,
             })
         except Exception as e:
             try:

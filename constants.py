@@ -440,6 +440,7 @@ CHAT_SCRIPT_PARTS = [
     "/static/js/chat_parts/0045_transfers_crypto.js",
     "/static/js/chat_parts/0046_transfers_signal_voice_events.js",
     "/static/js/chat_parts/0047_settings_modal.js",
+    "/static/js/chat_parts/0047b_loading_splash.js",
     "/static/js/chat_parts/0048_boot_presence_dom.js",
     "/static/js/chat_parts/0048b_reconnect_restore_runtime.js",
     "/static/js/chat_parts/0048c_room_invites_webcam_ui.js",

@@ -1,3 +1,20 @@
+
+let EC_PRESENCE_HEARTBEAT_TIMER = null;
+function ecStopPresenceHeartbeat(){
+  try { if (EC_PRESENCE_HEARTBEAT_TIMER) clearInterval(EC_PRESENCE_HEARTBEAT_TIMER); } catch {}
+  EC_PRESENCE_HEARTBEAT_TIMER = null;
+}
+function ecStartPresenceHeartbeat(){
+  ecStopPresenceHeartbeat();
+  const configured = Number(HUI_CFG?.shared_state_heartbeat_seconds || 60) || 60;
+  const intervalMs = Math.max(15000, Math.min(300000, configured * 1000));
+  EC_PRESENCE_HEARTBEAT_TIMER = setInterval(() => {
+    try {
+      if (socket?.connected && !AUTH_EXPIRED) socket.emit("hui_presence_heartbeat", { at: Date.now() });
+    } catch {}
+  }, intervalMs);
+}
+
 async function restoreLastRoomAndVoice() {
   if (EC_RESTORE_IN_PROGRESS) return;
   EC_RESTORE_IN_PROGRESS = true;
@@ -84,6 +101,7 @@ socket.on("connect", () => {
   }
 
   hideConnBanner();
+  ecStartPresenceHeartbeat();
 
   // Full bootstrap can be expensive (multiple HTTP fetches). Only do it on the
   // first connection, or if we haven't done one recently.
@@ -136,6 +154,7 @@ socket.on("connect", () => {
 });
 
 socket.on("disconnect", (reason) => {
+  ecStopPresenceHeartbeat();
   // Transient disconnects happen (server restarts, Wi‑Fi blips, sleep/wake).
   // Keep the user in-app; only redirect on real auth failure or explicit logout.
   if (AUTH_RECOVERY_IN_PROGRESS) return;

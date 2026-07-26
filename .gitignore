@@ -1,0 +1,75 @@
+# Python/cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Local secrets/config
+.env
+!.env.example
+.env.local
+.env.production
+.env.development
+.env.*.local
+server_config.json
+settings.json
+secrets.json
+*.key
+*.pem
+*.crt
+*.csr
+*.p12
+*.pfx
+
+# Local databases/runtime state
+*.sqlite
+*.sqlite3
+*.db
+instance/
+logs/
+uploads/
+downloads/
+mail_spool/
+backups/
+certs/
+
+# Editor/OS noise
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Node/browser build leftovers
+node_modules/
+dist/
+build/
+coverage/
+
+# Generated release artifacts
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.sha256
+release-report.md
+Hui-Chat-v*.zip
+
+# Local scratch/output
+*.log
+*.tmp
+*.bak
+
+# Generated review output
+review_reports/

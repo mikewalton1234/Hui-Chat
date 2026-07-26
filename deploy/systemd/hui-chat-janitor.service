@@ -13,8 +13,10 @@
 
 [Unit]
 Description=Chat server janitor for Hui Chat deployments
-After=network-online.target redis.service
-Wants=network-online.target redis.service
+After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple

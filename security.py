@@ -267,6 +267,7 @@ _SRL_BUCKETS: dict[str, deque] = {}
 _SRL_LOCK = threading.Lock()
 _SRL_REDIS_CLIENT = None
 _SRL_REDIS_URL: str | None = None
+_SRL_REDIS_CONFIG: tuple[float, float, int] | None = None
 
 
 def _simple_rate_limit_redis_url() -> str:
@@ -280,27 +281,34 @@ def _simple_rate_limit_redis_url() -> str:
 
 
 def _simple_rate_limit_redis_client(url: str):
-    global _SRL_REDIS_CLIENT, _SRL_REDIS_URL
+    global _SRL_REDIS_CLIENT, _SRL_REDIS_URL, _SRL_REDIS_CONFIG
     if not url or _redis_mod is None:
         return None
     with _SRL_LOCK:
-        if _SRL_REDIS_CLIENT is not None and _SRL_REDIS_URL == url:
+        redis_config = (
+            float(current_app.config.get("HUI_REDIS_CONNECT_TIMEOUT_SECONDS") or 1.0),
+            float(current_app.config.get("HUI_REDIS_SOCKET_TIMEOUT_SECONDS") or 1.0),
+            int(current_app.config.get("HUI_REDIS_HEALTH_CHECK_INTERVAL_SECONDS") or 30),
+        )
+        if _SRL_REDIS_CLIENT is not None and _SRL_REDIS_URL == url and _SRL_REDIS_CONFIG == redis_config:
             return _SRL_REDIS_CLIENT
         try:
             _SRL_REDIS_CLIENT = _redis_mod.Redis.from_url(
                 url,
                 decode_responses=True,
-                socket_connect_timeout=0.5,
-                socket_timeout=0.5,
-                health_check_interval=30,
+                socket_connect_timeout=redis_config[0],
+                socket_timeout=redis_config[1],
+                health_check_interval=redis_config[2],
             )
             _SRL_REDIS_CLIENT.ping()
             _SRL_REDIS_URL = url
+            _SRL_REDIS_CONFIG = redis_config
             return _SRL_REDIS_CLIENT
         except Exception as exc:
             logging.warning('Redis simple rate limiter unavailable; falling back to process-local buckets: %s', exc)
             _SRL_REDIS_CLIENT = None
             _SRL_REDIS_URL = None
+            _SRL_REDIS_CONFIG = None
             return None
 
 

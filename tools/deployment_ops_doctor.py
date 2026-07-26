@@ -62,11 +62,11 @@ def main() -> int:
         'EnvironmentFile="/etc/hui chat/hui.env"',
         "ExecStartPre=",
         "tools/config_doctor.py --config",
-        "--redis-socketio-check",
+        "--redis-socketio-check --redis-blocking-only",
         "HUI_CONFIG=",
         "HUI_PRODUCTION_WORKERS=1",
         "HUI_WORKERS=1",
-        "After=network-online.target redis.service",
+        "After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service",
         'ReadWritePaths="/tmp/Hui Chat S19/secure dm"',
         'ReadWritePaths="/tmp/Hui Chat S19/server_config.json"',
     ])
@@ -78,7 +78,7 @@ def main() -> int:
         'HUI_BIND="127.0.0.1:%i"',
         "HUI_PRODUCTION_WORKERS=1",
         "HUI_WORKERS=1",
-        "--redis-socketio-check",
+        "--redis-socketio-check --redis-blocking-only",
     ])
 
     _assert_contains(failures, "janitor systemd service", janitor, [
@@ -86,8 +86,8 @@ def main() -> int:
         "tools/config_doctor.py --config",
         "Run exactly one janitor",
         'WorkingDirectory="/tmp/Hui Chat S19"',
-        "After=network-online.target redis.service",
-        "Wants=network-online.target redis.service",
+        "After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service",
+        "Wants=network-online.target",
     ])
     if "main.py --production" in janitor:
         failures.append("janitor service must not start the web server")

@@ -190,6 +190,37 @@ def register(socketio, settings, ctx):
         _emit_missed_pm_summary(username, sid)
 
 
+
+    @socketio.on("hui_presence_heartbeat")
+    @jwt_required()
+    def handle_presence_heartbeat(data=None):
+        """Refresh cross-process presence without extending the auth idle timer."""
+        username, auth_session_id, state, rejection = _require_live_socket_session(
+            touch_activity=False,
+            disconnect_on_failure=True,
+        )
+        if rejection is not None:
+            return rejection
+        guard = _socket_event_guard(
+            username,
+            "hui_presence_heartbeat",
+            data or {},
+            default_max_bytes=1024,
+            default_limit=6,
+            default_window=60,
+        )
+        if guard is not None:
+            return guard
+        sid = request.sid
+        current = get_connected_session(sid) or state or {}
+        upsert_connected_session(
+            sid,
+            username,
+            current.get("room"),
+            auth_session_id=auth_session_id,
+        )
+        return {"success": True, "server_time": time.time()}
+
     @socketio.on("disconnect")
     def handle_disconnect(*args, **kwargs):
         # Socket.IO may pass a reason or sid depending on version.

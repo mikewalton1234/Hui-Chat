@@ -21,6 +21,7 @@ from scaled_redis_autoconfig import (
     apply_scaled_runtime_safety_defaults,
     redis_install_hint,
 )
+from runtime_timing import timing_float
 
 
 @dataclass(frozen=True)
@@ -395,11 +396,18 @@ def build_redis_socketio_report(settings: dict[str, Any], *, live_check: bool = 
         items.append(RedisSocketIOItem("pass", "redis-shared-state-separation", "Socket.IO and shared-state Redis DBs are separate", f"socketio={_redact_url(queue)}; shared={_redact_url(shared_url)}"))
 
     db_pool_max = _int_setting(settings, "db_pool_max", default=50)
+    db_pool_wait_seconds = _int_setting(settings, "db_pool_wait_seconds", default=10)
+    production_threads = _int_setting(settings, "production_threads", default=_int_setting(settings, "gunicorn_threads", default=100))
     planned_db_connections = instances * max(1, db_pool_max)
     if instances > 1 and planned_db_connections > 80:
         items.append(RedisSocketIOItem("warn", "db-pool-scale", "Planned DB pool can exceed a typical local PostgreSQL limit", f"production_instance_count={instances}; db_pool_max={db_pool_max}; possible web connections={planned_db_connections}", "Lower db_pool_max per instance, raise PostgreSQL max_connections, or add PgBouncer before scaling high."))
     elif instances > 1:
         items.append(RedisSocketIOItem("pass", "db-pool-scale", "Planned DB pool scale looks bounded", f"production_instance_count={instances}; db_pool_max={db_pool_max}; possible web connections={planned_db_connections}"))
+
+    if instances > 1 and production_threads > db_pool_max and db_pool_wait_seconds <= 0:
+        items.append(RedisSocketIOItem("fail", "db-pool-burst-wait", "Scaled DB pool has no burst wait", f"production_threads={production_threads}; db_pool_max={db_pool_max}; db_pool_wait_seconds={db_pool_wait_seconds}", "Set db_pool_wait_seconds=10 or higher so short browser/Socket.IO bursts queue instead of failing immediately."))
+    elif instances > 1 and production_threads > db_pool_max:
+        items.append(RedisSocketIOItem("pass", "db-pool-burst-wait", "Scaled DB pool burst queue is enabled", f"production_threads={production_threads}; db_pool_max={db_pool_max}; db_pool_wait_seconds={db_pool_wait_seconds}"))
 
     if async_mode == "threading" and worker_class != "gthread":
         items.append(RedisSocketIOItem("warn", "async-worker-alignment", "Threading async mode does not match worker class", f"async_mode={async_mode}; worker_class={worker_class}", "Use production_async_mode=threading and production_worker_class=gthread for the default path."))
@@ -416,8 +424,12 @@ def build_redis_socketio_report(settings: dict[str, Any], *, live_check: bool = 
         items.append(RedisSocketIOItem("pass", "socketio-transports", "Socket.IO transports reviewed", f"transports={transports}"))
 
     if live_check:
+        live_timeout = max(
+            timing_float(settings, "redis_connect_timeout_seconds"),
+            timing_float(settings, "redis_socket_timeout_seconds"),
+        )
         for url in _unique_redis_urls(rate_url, queue, shared_url):
-            ok, msg = _ping_redis_url(url)
+            ok, msg = _ping_redis_url(url, timeout=live_timeout)
             items.append(RedisSocketIOItem("pass" if ok else "fail", "redis-live-ping", "Redis live ping succeeded" if ok else "Redis live ping failed", msg, redis_install_hint() + "; also confirm redis>=5.0 is installed in the Python venv." if not ok else ""))
         if not _unique_redis_urls(rate_url, queue, shared_url):
             items.append(RedisSocketIOItem("warn", "redis-live-ping", "No Redis URL available for live ping", "Configure rate_limit_storage_uri or socketio_message_queue first."))

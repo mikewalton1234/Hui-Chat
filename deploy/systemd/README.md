@@ -38,11 +38,11 @@ pip install -U pip
 pip install -r requirements.txt
 ```
 
-### 4) Install Redis (optional but recommended)
+### 4) Install Valkey/Redis (required for multiple instances)
 
 ```bash
-sudo pacman -S redis
-sudo systemctl enable --now redis
+sudo pacman -S valkey
+sudo systemctl enable --now valkey
 ```
 
 ### 5) Install env file
@@ -60,15 +60,15 @@ The service user must be able to read the EnvironmentFile, but the file should n
 
 You have two options:
 
-1) **Single-process dev-ish** (`python main.py`) — simplest.
-2) **Production** (`Gunicorn gthread, one worker per instance`) — recommended.
+1) **Single production instance** (`python main.py --production`) — simplest.
+2) **Direct Gunicorn production service** (`Gunicorn gthread, one worker per instance`) — equivalent lower-level option.
 
 #### Option A: python main.py
 
 ```bash
 sudo cp deploy/systemd/hui-chat.service /etc/systemd/system/hui-chat.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now hui
+sudo systemctl enable --now hui-chat.service
 ```
 
 #### Option B: Gunicorn gthread, one worker per instance
@@ -86,14 +86,14 @@ sudo systemctl enable --now hui-chat-janitor
 ## Logs
 
 ```bash
-journalctl -u hui -f
+journalctl -u hui-chat.service -f
 journalctl -u hui-chat-gunicorn -f
 journalctl -u hui-chat-janitor -f
 ```
 
 ## Common tweaks
 
-- If you installed Hui Chat somewhere else, update `WorkingDirectory=`, the Python path, the config path in each `ExecStartPre=`, and the config path in `ExecStart=`.
+- The complete `scripts/install_server.sh` installer renders these units automatically for custom `HUI_INSTALL_DIR`, `HUI_ENV_DIR`, service-user, and service-group values. When installing templates manually elsewhere, update every path consistently.
 - Keep the generated/static `ExecStartPre=` checks. They catch bad config and unsafe Redis/Socket.IO topology before systemd starts the web process.
 - If you do NOT want config persistence at all, keep `HUI_PERSIST_SECRETS=0` and remove `ReadWritePaths=.../server_config.json`.
 - If you move upload, private upload, export, or instance folders outside the project root, add matching `ReadWritePaths=` entries or generate a settings-specific deployment kit.
@@ -116,4 +116,6 @@ Before enabling services, run the static checks from the project root:
 ```bash
 python tools/deployment_ops_doctor.py
 python tools/deployment_ops_deep_doctor.py
+python tools/production_config_guard_doctor.py
+python main.py --production-config-check --production-live-check
 ```

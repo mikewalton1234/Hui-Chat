@@ -46,6 +46,7 @@ from secret_manager import (
     write_env_secrets,
 )
 from scaled_redis_autoconfig import apply_scaled_runtime_safety_defaults, scaled_realtime_requested, scaled_redis_summary_lines
+from runtime_timing import DEFAULT_RUNTIME_TIMING, apply_runtime_timing_safety_defaults
 
 
 def _load_setup_helpers():
@@ -72,12 +73,19 @@ def _fallback_default_settings() -> dict:
         "auto_allow_lan_origins": True,
         "rate_limit_storage_uri": "memory://",
         "rate_limit_storage": "memory://",
+        "simple_rate_limit_storage_uri": "",
         "rate_limit_public_key": "120 per minute",
         "socketio_message_queue": "",
         "shared_state_redis_url": "",
+        **DEFAULT_RUNTIME_TIMING,
         "production_workers": 1,
+        "production_threads": 100,
+        "auto_tune_performance": True,
         "production_async_mode": "threading",
         "production_worker_class": "gthread",
+        "auto_detect_production_conflicts": True,
+        "auto_fix_production_conflicts": True,
+        "auto_tune_production_capacity": True,
         "health_check_endpoint": "/health",
         "enable_health_check_endpoint": False,
         "max_request_bytes": 31457280,
@@ -118,6 +126,7 @@ def _safe_default_settings() -> dict:
     except Exception:
         settings = _fallback_default_settings()
     apply_scaled_runtime_safety_defaults(settings)
+    apply_runtime_timing_safety_defaults(settings)
     return settings
 
 
@@ -129,7 +138,9 @@ def _safe_normalize_setup_settings(settings: dict) -> dict:
         fallback = _fallback_default_settings()
         fallback.update(settings or {})
         out = fallback
-    apply_scaled_runtime_safety_defaults(out)
+    # Keep loading observational: production/setup guards report and apply
+    # topology/timing corrections explicitly instead of silently rewriting the
+    # effective configuration before the administrator can see the conflict.
     return out
 
 
@@ -318,6 +329,42 @@ def apply_env_overrides(settings: dict) -> None:
             return int(v)
         except ValueError:
             return None
+
+    def _float_env(*names: str) -> float | None:
+        v = _str_env(*names)
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
+    timing_env_ints = {
+        "socketio_ping_interval_seconds": ("HUI_SOCKETIO_PING_INTERVAL_SECONDS",),
+        "socketio_ping_timeout_seconds": ("HUI_SOCKETIO_PING_TIMEOUT_SECONDS",),
+        "shared_state_heartbeat_seconds": ("HUI_SHARED_STATE_HEARTBEAT_SECONDS",),
+        "shared_state_session_ttl_seconds": ("HUI_SHARED_STATE_SESSION_TTL_SECONDS", "HUI_SHARED_STATE_SESSION_TTL"),
+        "redis_health_check_interval_seconds": ("HUI_REDIS_HEALTH_CHECK_INTERVAL_SECONDS",),
+        "janitor_interval_seconds": ("HUI_JANITOR_INTERVAL_SECONDS",),
+        "voice_invite_cooldown_seconds": ("HUI_VOICE_INVITE_COOLDOWN_SECONDS",),
+        "voice_dm_invite_ttl_seconds": ("HUI_VOICE_DM_INVITE_TTL_SECONDS",),
+        "voice_dm_active_ttl_seconds": ("HUI_VOICE_DM_ACTIVE_TTL_SECONDS",),
+        "p2p_file_session_ttl_seconds": ("HUI_P2P_FILE_SESSION_TTL_SECONDS",),
+        "admin_ip_ban_default_minutes": ("HUI_ADMIN_IP_BAN_DEFAULT_MINUTES",),
+    }
+    for timing_key, env_names in timing_env_ints.items():
+        value = _int_env(*env_names)
+        if value is not None:
+            settings[timing_key] = value
+
+    timing_env_floats = {
+        "redis_connect_timeout_seconds": ("HUI_REDIS_CONNECT_TIMEOUT_SECONDS",),
+        "redis_socket_timeout_seconds": ("HUI_REDIS_SOCKET_TIMEOUT_SECONDS",),
+    }
+    for timing_key, env_names in timing_env_floats.items():
+        value = _float_env(*env_names)
+        if value is not None:
+            settings[timing_key] = value
 
     # Prefer DB env vars for safety.
     db = os.getenv("DB_CONNECTION_STRING") or os.getenv("DATABASE_URL")
@@ -594,7 +641,9 @@ def apply_env_overrides(settings: dict) -> None:
     if systemd_env_file:
         settings["systemd_env_file"] = systemd_env_file
 
-    apply_scaled_runtime_safety_defaults(settings)
+    # Environment loading must be observational.  Do not silently auto-fill
+    # Redis roles or resize database pools here: production_config_guard owns
+    # those corrections so administrators see exactly what changed and why.
 
 
 def _default_local_postgres_parts(db_name: str = "hui") -> dict:
@@ -794,9 +843,8 @@ def _production_worker_class_from_settings(settings: dict, env: dict | None = No
 
 def _production_dependency_install_hint() -> str:
     return (
-        "source .venv/bin/activate  # if your venv is not already active\n"
-        "python -m pip install --upgrade pip\n"
-        "python -m pip install -r requirements.txt"
+        ".venv/bin/python -m pip install --upgrade pip\n"
+        ".venv/bin/python -m pip install -r requirements.txt"
     )
 
 
@@ -825,8 +873,13 @@ def _validate_production_dependencies(gunicorn: str, worker_class: str) -> list[
         "from gunicorn.util import load_class\n"
         f"load_class({worker_class!r})\n"
     )
+    validation_python = sys.executable
+    gunicorn_path = Path(str(gunicorn)).resolve()
+    candidate_python = gunicorn_path.parent / "python"
+    if candidate_python.exists() and os.access(candidate_python, os.X_OK):
+        validation_python = str(candidate_python)
     result = subprocess.run(
-        [sys.executable, "-c", check],
+        [validation_python, "-c", check],
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
@@ -902,9 +955,30 @@ def _exec_production_server(settings: dict, settings_path: Path) -> None:
         env.setdefault("HUI_SHARED_STATE_REDIS_URL", str(settings.get("shared_state_redis_url")).strip())
     env.setdefault("HUI_FORWARDED_ALLOW_IPS", str(settings.get("forwarded_allow_ips") or "127.0.0.1"))
     env.setdefault("HUI_GUNICORN_LOGLEVEL", str(settings.get("production_loglevel") or "info"))
+    try:
+        configured_threads = int(settings.get("production_threads") or settings.get("gunicorn_threads") or 100)
+    except Exception:
+        configured_threads = 100
+    env.setdefault("HUI_GUNICORN_THREADS", str(max(1, min(500, configured_threads))))
+    env.setdefault("HUI_DB_POOL_WAIT_SECONDS", str(settings.get("db_pool_wait_seconds") or 10))
     env.setdefault("HUI_GUNICORN_WORKER_CLASS", _production_worker_class_from_settings(settings, env))
 
     worker_class = env["HUI_GUNICORN_WORKER_CLASS"]
+
+    from production_config_guard import blocking_production_conflicts, format_production_config_report, build_production_config_report
+    production_conflicts = blocking_production_conflicts(settings, live_check=True)
+    if production_conflicts:
+        print("❌ Production settings conflict. Hui Chat will not start with a configuration that can break or overload the server.")
+        for err in production_conflicts[:16]:
+            print(f"   - {err}")
+        if len(production_conflicts) > 16:
+            print(f"   - ...and {len(production_conflicts) - 16} more failure(s)")
+        print("\nRun the complete conflict detector:")
+        print("python main.py --production-config-check --production-live-check")
+        print("\nApply safe deterministic corrections:")
+        print("python main.py --production-config-fix --production-live-check")
+        raise SystemExit(2)
+
     readiness_errors = _blocking_public_beta_readiness_errors(settings, settings_path)
     if readiness_errors:
         print("❌ Public beta production readiness failed. Hui Chat will not start as an internet-facing beta yet.")
@@ -936,6 +1010,7 @@ def _exec_production_server(settings: dict, settings_path: Path) -> None:
     print(f"   config:  {env['HUI_CONFIG']}")
     print(f"   bind:    {env['HUI_BIND']}")
     print(f"   workers: {env['HUI_WORKERS']} per instance")
+    print(f"   threads: {env['HUI_GUNICORN_THREADS']} per instance")
     planned_instances = _production_instance_count_from_settings(settings)
     if planned_instances > 1:
         base_port = _production_instance_base_port_from_settings(settings)
@@ -1015,12 +1090,15 @@ def _setup_bypassing_cli_command(args: argparse.Namespace) -> bool:
     If the admin explicitly passes --setup, setup wins instead of being silently
     skipped by a combined diagnostic flag.
     """
-    if getattr(args, "setup", False):
+    if getattr(args, "setup", False) or getattr(args, "setup_only", False):
         return False
     return bool(
         getattr(args, "setup_doctor", False)
         or args.public_beta_check
         or args.redis_socketio_check
+        or getattr(args, "production_config_check", False)
+        or getattr(args, "production_config_fix", False)
+        or getattr(args, "production_config_blocking_only", False)
         or args.hosting_help
         or getattr(args, "dynamic_dns_check", False)
         or getattr(args, "dynamic_dns_update", False)
@@ -1037,12 +1115,13 @@ def _setup_bypassing_cli_command(args: argparse.Namespace) -> bool:
 
 def _should_launch_setup(args: argparse.Namespace, *, config_missing_at_start: bool, setup_bypassing_command: bool) -> bool:
     """Return True when this process should run the interactive setup wizard."""
-    return (not setup_bypassing_command) and (bool(getattr(args, "setup", False)) or bool(config_missing_at_start))
+    return (not setup_bypassing_command) and (bool(getattr(args, "setup", False)) or bool(getattr(args, "setup_only", False)) or bool(config_missing_at_start))
 
 
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="configurable chat server")
     p.add_argument("--setup", action="store_true", help="run the interactive setup wizard")
+    p.add_argument("--setup-only", action="store_true", help="run setup, save configuration, and exit without starting the server")
     p.add_argument("--setup-doctor", action="store_true", help="diagnose terminal/curses support for the blue setup UI and exit")
     mode_group = p.add_mutually_exclusive_group()
     mode_group.add_argument("--production", action="store_true", help="start with the production Gunicorn runner for this launch")
@@ -1055,6 +1134,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--public-beta-check", action="store_true", help="check public beta hosting readiness and exit")
     p.add_argument("--redis-socketio-check", action="store_true", help="check Redis, Socket.IO, Gunicorn worker, and rate-limit production topology and exit")
     p.add_argument("--redis-live-check", action="store_true", help="when used with --redis-socketio-check, also ping configured Redis URLs")
+    p.add_argument("--readiness-warnings-ok", action="store_true", help="deprecated alias: return success for readiness WARN results")
+    p.add_argument("--redis-blocking-only", action="store_true", help="with --redis-socketio-check, exit nonzero only for FAIL items so systemd warnings do not block startup")
+    p.add_argument("--production-config-check", action="store_true", help="detect production settings, environment, capacity, port, proxy, Redis, and database-pool conflicts and exit")
+    p.add_argument("--production-config-fix", action="store_true", help="apply deterministic safe production fixes, save the config, print the remaining report, and exit")
+    p.add_argument("--production-live-check", action="store_true", help="with a production config check/fix, also probe planned ports and local systemd paths")
+    p.add_argument("--production-config-blocking-only", action="store_true", help="with --production-config-check, exit nonzero only for FAIL items so non-blocking warnings do not stop systemd")
     p.add_argument("--hosting-help", action="store_true", help="print plain-English LAN/no-domain/public-beta hosting guidance and exit")
     p.add_argument("--dynamic-dns-check", action="store_true", help="validate Dynamic DNS helper settings and exit")
     p.add_argument("--dynamic-dns-update", action="store_true", help="send one Dynamic DNS update request and exit")
@@ -1096,12 +1181,27 @@ def main() -> None:
         _, interactive_setup, _ = _load_setup_helpers()
         settings = interactive_setup(settings)
         settings = _sync_run_mode_settings(settings)
-        scaled_changed = apply_scaled_runtime_safety_defaults(settings)
-        if scaled_realtime_requested(settings) and any(scaled_changed.values()):
-            print("ℹ️  Setup auto-filled Redis URLs for the selected multi-instance deployment:")
-            for line in scaled_redis_summary_lines(settings, scaled_changed):
-                print(f"   {line}")
-            print()
+        if bool(settings.get("auto_detect_production_conflicts", True)) and _normalized_run_mode(settings) == "production":
+            from production_config_guard import apply_safe_production_fixes, build_production_config_report, format_production_config_report
+            production_changes = []
+            if bool(settings.get("auto_fix_production_conflicts", True)):
+                production_changes = apply_safe_production_fixes(settings)
+            production_report = build_production_config_report(settings, live_check=True)
+            if production_changes:
+                print("ℹ️  Setup automatically corrected safe production conflicts:")
+                for item in production_changes:
+                    print(f"   - {item['key']}: {item.get('old')!r} -> {item.get('new')!r} ({item.get('reason')})")
+                print()
+            if production_report.get("overall") == "fail":
+                print(format_production_config_report(production_report))
+                print("❌ Setup did not save because unresolved production settings would interfere with the server.")
+                print("   Correct the FAIL items, remove stale .env/systemd overrides, and run --setup again.")
+                raise SystemExit(2)
+            if production_report.get("overall") == "warn":
+                print("⚠️  Production settings have non-blocking warnings. Run --production-config-check --production-live-check for details.\n")
+        # interactive_setup already applies and reports production corrections
+        # at the final save gate.  Reapplying scaled defaults here would bypass
+        # auto_fix_production_conflicts=False and hide configuration drift.
         secret_result = ensure_core_runtime_secrets(settings, settings_file=settings_path)
         # Generate stable at-rest/privacy keys automatically when the admin enables
         # those features. Values are written to protected .env when JSON secret
@@ -1135,6 +1235,10 @@ def main() -> None:
             print("\nSet those environment variables, or rerun setup with HUI_PERSIST_SECRETS=1 if you intentionally want legacy config-file secret storage.")
             return
         settings = _reload_saved_settings_for_runtime(settings_path)
+        if getattr(args, "setup_only", False):
+            print("✅ Setup-only mode finished. The server was not started.")
+            print("   Next: python tools/setup_readiness_doctor.py --config " + str(settings_path) + " --live")
+            return
 
     settings = _effective_settings_for_cli_mode(settings, args)
 
@@ -1169,7 +1273,28 @@ def main() -> None:
         print(format_redis_socketio_report(report))
         if report.get("overall") == "fail":
             raise SystemExit(2)
-        if report.get("overall") == "warn":
+        warnings_ok = bool(getattr(args, "redis_blocking_only", False) or getattr(args, "readiness_warnings_ok", False))
+        if report.get("overall") == "warn" and not warnings_ok:
+            raise SystemExit(1)
+        return
+
+    if args.production_config_check or args.production_config_fix:
+        from production_config_guard import apply_safe_production_fixes, build_production_config_report, format_production_config_report
+        if args.production_config_fix:
+            changes = apply_safe_production_fixes(settings)
+            save_settings(settings_path, settings)
+            if changes:
+                print("Applied safe production fixes:")
+                for item in changes:
+                    print(f"  - {item['key']}: {item.get('old')!r} -> {item.get('new')!r} ({item.get('reason')})")
+                print(f"Saved corrected settings to {settings_path}.\n")
+            else:
+                print("No deterministic production fixes were needed.\n")
+        report = build_production_config_report(settings, live_check=bool(args.production_live_check))
+        print(format_production_config_report(report))
+        if report.get("overall") == "fail":
+            raise SystemExit(2)
+        if report.get("overall") == "warn" and not bool(args.production_config_blocking_only):
             raise SystemExit(1)
         return
 
@@ -1287,14 +1412,13 @@ def main() -> None:
             cfg_max = 50 if instances <= 1 else (25 if instances <= 2 else 15 if instances <= 5 else 10)
         else:
             cfg_max = _safe_int(raw_max, 50 if instances <= 1 else 10, minimum=1, maximum=100)
-        if instances <= 1 and cfg_max < 50:
-            cfg_max = 50
         if cfg_min > cfg_max:
             cfg_min = cfg_max
         init_db_pool(
             minconn=cfg_min,
             maxconn=cfg_max,
             dsn=str(settings.get("database_url")) if settings.get("database_url") else None,
+            wait_timeout_seconds=settings.get("db_pool_wait_seconds", 10),
         )
 
     if args.list_migrations and not (args.migrate or args.schema_version):

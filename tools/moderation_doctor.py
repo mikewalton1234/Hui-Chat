@@ -34,6 +34,7 @@ def main() -> int:
     socket_handlers = (ROOT / "socket_handlers.py").read_text(encoding="utf-8")
     routes_auth = (ROOT / "routes_auth.py").read_text(encoding="utf-8")
     account_status = (ROOT / "account_status.py").read_text(encoding="utf-8")
+    admin_ui = (ROOT / "admin_panel_inject.py").read_text(encoding="utf-8")
     schema = (ROOT / "db" / "schema.py").read_text(encoding="utf-8")
     migration = (ROOT / "migrations" / "m0021_moderation_sanctions_hardening.py").read_text(encoding="utf-8")
 
@@ -67,6 +68,9 @@ def main() -> int:
     require_contains("routes_auth.py", "username_available_ip_ban_blocked", "username availability IP-ban gate")
     require_contains("routes_auth.py", "forgot_password_ip_ban_blocked", "forgot-password IP-ban gate")
     require_contains("routes_auth.py", "reset_password_ip_ban_blocked", "reset-password IP-ban gate")
+    require_contains("routes_admin_tools.py", 'timing_int(settings, "admin_ip_ban_default_minutes")', "central IP-ban default timing")
+    require_contains("admin_panel_inject.py", "if (minutes !== null) payload.minutes = String(minutes)", "timed IP-ban request payload")
+    require_contains("admin_panel_inject.py", "parsed > 525600", "timed IP-ban client bound")
     require_contains("routes_admin_tools.py", "disconnected_sockets", "admin IP-ban hard socket disconnect count")
     require_contains("routes_admin_tools.py", "socketio.server.disconnect", "admin IP-ban hard socket disconnect")
     require_contains("socket_handlers.py", "socket_ip_ban_blocked", "Socket.IO IP-ban audit event")
@@ -77,7 +81,7 @@ def main() -> int:
     require_contains("migrations/m0021_moderation_sanctions_hardening.py", "LOWER(BTRIM(sanction_type))", "migration sanction type normalization")
 
     print("✅ Moderation sanctions doctor passed")
-    print("checks: active sanction ordering, safe clears, IP-ban enforcement, chat/auth form gates, hard socket disconnect, rollback-safe fallback")
+    print("checks: active sanction ordering, timed/permanent IP-ban payloads, safe clears, IP-ban enforcement, chat/auth form gates, hard socket disconnect, rollback-safe fallback")
     return 0
 
 

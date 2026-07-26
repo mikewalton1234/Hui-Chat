@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import logging
 import os
+import time
 
 import psycopg2
 from psycopg2.pool import PoolError
@@ -36,7 +37,14 @@ def prepare_runtime_database(settings: dict) -> dict:
     ensure_database_ready(runtime_dsn, recreate=False, bootstrap_dsn=bootstrap_dsn or None)
     return {"runtime_dsn": runtime_dsn, "bootstrap_dsn": bootstrap_dsn or None}
 
-def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None, *, allow_direct_fallback: bool | None = None) -> None:
+def init_db_pool(
+    minconn: int = 1,
+    maxconn: int = 50,
+    dsn: str | None = None,
+    *,
+    allow_direct_fallback: bool | None = None,
+    wait_timeout_seconds: float | None = None,
+) -> None:
     """Initialise a global ThreadedConnectionPool.
 
     Safe to call multiple times (no-op after first init).
@@ -52,6 +60,17 @@ def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None, *,
         raw = os.getenv("HUI_DB_POOL_DIRECT_FALLBACK", "").strip().lower()
         allow_direct_fallback = raw in {"1", "true", "yes", "on"}
     shared._ALLOW_DIRECT_FALLBACK = bool(allow_direct_fallback)
+    if wait_timeout_seconds is None:
+        raw_wait = os.getenv("HUI_DB_POOL_WAIT_SECONDS", "10").strip()
+        try:
+            wait_timeout_seconds = float(raw_wait)
+        except Exception:
+            wait_timeout_seconds = 10.0
+    try:
+        parsed_wait = float(wait_timeout_seconds)
+    except Exception:
+        parsed_wait = 10.0
+    shared._DB_POOL_WAIT_SECONDS = max(0.0, min(60.0, parsed_wait))
 
     # TCP keepalives prevent Replit's managed Postgres from silently dropping idle
     # connections mid-pool.  Without these, the server closes the SSL socket after
@@ -72,7 +91,7 @@ def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None, *,
             **_KEEPALIVE_KWARGS,
         )
         shared._POOL_INIT_ERROR = None
-        logging.info("✅  Postgres connection pool ready (min=%s max=%s, keepalives on)", minconn, maxconn)
+        logging.info("✅  Postgres connection pool ready (min=%s max=%s wait=%.1fs, keepalives on)", minconn, maxconn, shared._DB_POOL_WAIT_SECONDS)
     except Exception as e:
         shared._POOL = None
         shared._POOL_INIT_ERROR = str(e)
@@ -82,14 +101,55 @@ def init_db_pool(minconn: int = 1, maxconn: int = 50, dsn: str | None = None, *,
             logging.error("❌ Could not initialise Postgres pool and direct fallback is disabled: %s", e)
 
 
+def _pool_getconn_with_wait():
+    """Get a pooled connection, waiting briefly for burst capacity.
+
+    psycopg2's ThreadedConnectionPool raises PoolError immediately when all
+    connections are checked out. Browser bootstrap, Socket.IO reconnects, and
+    admin polling can briefly exceed a deliberately small per-instance pool in
+    scaled deployments. Waiting keeps the pool bounded while turning that
+    momentary burst into backpressure instead of user-visible failures.
+    """
+    pool = shared._POOL
+    if pool is None:
+        raise PoolError("connection pool is not initialized")
+
+    wait_seconds = max(0.0, float(shared._DB_POOL_WAIT_SECONDS or 0.0))
+    deadline = time.monotonic() + wait_seconds
+    last_error: Exception | None = None
+    while True:
+        try:
+            with shared._POOL_CONDITION:
+                return pool.getconn()
+        except PoolError as exc:
+            last_error = exc
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or wait_seconds <= 0:
+                raise PoolError(
+                    f"connection pool exhausted after waiting {wait_seconds:.1f}s"
+                ) from last_error
+            # Use a short bounded wait so a missed notify cannot stall until the
+            # full timeout. _release_conn() notifies as soon as capacity returns.
+            with shared._POOL_CONDITION:
+                shared._POOL_CONDITION.wait(timeout=min(0.25, remaining))
+
+
+def _pool_putconn(conn, *, close: bool = False) -> None:
+    pool = shared._POOL
+    if pool is None:
+        return
+    with shared._POOL_CONDITION:
+        pool.putconn(conn, close=close)
+        shared._POOL_CONDITION.notify()
+
+
 def _acquire_conn():
     """Acquire a connection either from the configured pool or a direct connection.
 
     Once ``init_db_pool()`` has configured a bounded pool, that bound is treated
-    as real capacity.  Hui Chat used to open unbounded temporary direct
-    connections when the pool was exhausted; that defeated db_pool_max and could
-    overload PostgreSQL in scaled deployments.  Direct fallback now requires the
-    explicit HUI_DB_POOL_DIRECT_FALLBACK=1 escape hatch.
+    as real capacity. Hui Chat applies bounded waiting during transient bursts;
+    direct fallback still requires the explicit HUI_DB_POOL_DIRECT_FALLBACK=1
+    escape hatch so scaled deployments cannot open unbounded connections.
     """
     if shared._POOL is not None:
         try:
@@ -99,7 +159,7 @@ def _acquire_conn():
             # retry up to pool-max times rather than just once.
             _max_discard = max(4, shared._DB_POOL_MAX or 4)
             for _attempt in range(_max_discard + 1):
-                conn = shared._POOL.getconn()
+                conn = _pool_getconn_with_wait()
                 if conn is None or conn.closed == 0:
                     break
                 logging.warning(
@@ -108,7 +168,7 @@ def _acquire_conn():
                     _max_discard,
                 )
                 try:
-                    shared._POOL.putconn(conn, close=True)
+                    _pool_putconn(conn, close=True)
                 except Exception:
                     pass
                 conn = None
@@ -116,7 +176,8 @@ def _acquire_conn():
         except PoolError as e:
             if not shared._ALLOW_DIRECT_FALLBACK:
                 raise RuntimeError(
-                    "PostgreSQL connection pool is exhausted. Increase db_pool_max, reduce planned instances, "
+                    "PostgreSQL connection pool stayed exhausted after bounded waiting. "
+                    "Increase db_pool_wait_seconds or db_pool_max, reduce planned instances, "
                     "or add PgBouncer; Hui Chat will not open unbounded direct DB connections."
                 ) from e
             logging.warning("Postgres pool exhausted; direct DB fallback is explicitly enabled: %s", e)
@@ -137,7 +198,7 @@ def _release_conn(conn, from_pool: bool) -> None:
         return
     if shared._POOL is not None and from_pool:
         # If the connection is broken, discard it from the pool entirely rather
-        # than returning it.  Returning a dead connection just means the next
+        # than returning it. Returning a dead connection just means the next
         # caller will hit the same SSL/OperationalError.
         broken = conn.closed != 0
         if not broken:
@@ -146,7 +207,7 @@ def _release_conn(conn, from_pool: bool) -> None:
             except Exception:
                 broken = True
         try:
-            shared._POOL.putconn(conn, close=broken)
+            _pool_putconn(conn, close=broken)
         except Exception:
             pass
     else:

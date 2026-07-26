@@ -13,7 +13,7 @@ from constants import APP_VERSION, get_db_connection_string, postgres_dsn_parts,
 from media_mode import resolve_av_mode
 from secrets_policy import persist_secrets_enabled
 from secret_manager import is_strong_secret, resolve_secret
-from scaled_redis_autoconfig import apply_scaled_runtime_safety_defaults
+from runtime_timing import timing_float, timing_int
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -318,6 +318,7 @@ def _check_db(settings: dict, init_db_pool_if_needed: bool) -> dict:
                 minconn=cfg_min,
                 maxconn=cfg_max,
                 dsn=dsn_override,
+                wait_timeout_seconds=settings.get("db_pool_wait_seconds", 10),
             )
         conn = get_db()
         with conn.cursor() as cur:
@@ -435,9 +436,9 @@ def _check_socket_runtime(settings: dict, runtime_context: dict | None = None) -
 
         client = redis.Redis.from_url(
             queue_url,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-            health_check_interval=10,
+            socket_connect_timeout=timing_float(settings, "redis_connect_timeout_seconds"),
+            socket_timeout=timing_float(settings, "redis_socket_timeout_seconds"),
+            health_check_interval=timing_int(settings, "redis_health_check_interval_seconds"),
         )
         client.ping()
         return _status(
@@ -505,8 +506,9 @@ def run_preflight(
     runtime_context: Optional[Dict[str, Any]] = None,
     include_database: bool = True,
 ) -> dict:
+    # Preflight is observational: it must report the saved/effective topology,
+    # not silently auto-fill Redis or resize database pools before checking it.
     settings = dict(settings or {})
-    apply_scaled_runtime_safety_defaults(settings)
     runtime_context = dict(runtime_context or {})
     checks = [
         _check_socketio_topology(settings, runtime_context),

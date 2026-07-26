@@ -1,5 +1,11 @@
 {
   "server_name": "Hui Chat Local",
+  "branding_logo_enabled": true,
+  "branding_loading_screen_enabled": true,
+  "branding_loading_screen_mode": "animation",
+  "branding_logo_asset": "images/hui-chat-logo.svg",
+  "branding_loading_asset": "images/hui-chat-logo-loading.svg",
+  "branding_asset_revision": "1",
   "server_host": "0.0.0.0",
   "server_port": 5000,
   "run_mode": "development",

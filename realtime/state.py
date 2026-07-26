@@ -7,6 +7,8 @@ so multiple workers can agree on who is online and which room they are in.
 
 from __future__ import annotations
 
+from runtime_timing import timing_float, timing_int
+
 import os
 import threading
 import time
@@ -210,15 +212,10 @@ def configure_shared_state(settings: dict | None = None) -> bool:
         or settings.get("shared_state_prefix")
         or "hui"
     )
-    ttl_raw = (
-        os.environ.get("HUI_SHARED_STATE_SESSION_TTL")
-        or settings.get("shared_state_session_ttl_seconds")
-        or 300
-    )
-    try:
-        ttl = max(60, int(ttl_raw))
-    except Exception:
-        ttl = 300
+    ttl_source = dict(settings)
+    if os.environ.get("HUI_SHARED_STATE_SESSION_TTL"):
+        ttl_source["shared_state_session_ttl_seconds"] = os.environ.get("HUI_SHARED_STATE_SESSION_TTL")
+    ttl = timing_int(ttl_source, "shared_state_session_ttl_seconds")
 
     # Shared realtime state intentionally requires its own explicit Redis URL.
     # Do not silently reuse the Socket.IO pub/sub DB or generic REDIS_URL; Hui Chat
@@ -243,9 +240,9 @@ def configure_shared_state(settings: dict | None = None) -> bool:
             client = redis.Redis.from_url(
                 url,
                 decode_responses=True,
-                socket_connect_timeout=1,
-                socket_timeout=1,
-                health_check_interval=30,
+                socket_connect_timeout=timing_float(settings, "redis_connect_timeout_seconds"),
+                socket_timeout=timing_float(settings, "redis_socket_timeout_seconds"),
+                health_check_interval=timing_int(settings, "redis_health_check_interval_seconds"),
             )
             client.ping()
             _SHARED_STATE_CLIENT = client

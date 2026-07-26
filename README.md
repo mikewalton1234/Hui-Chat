@@ -8,9 +8,9 @@ It includes public and private chat rooms, direct messages, group chats, friends
 
 > **Public demo notice:** The current hosted demo may respond slowly because it runs on limited hosting resources.
 
-**Try the current demo:** [https://Echo-Chat.replit.app](https://hui-chat-beta.replit.app/chat)
+**Public demo:** Update this line after deploying Hui Chat to its new hosting URL.
 
-Current build: **0.11.0-beta.447**
+Current build: **0.11.0-beta.459**
 
 ## What Makes Hui Chat Special
 
@@ -437,3 +437,12 @@ Production or public setup should be reviewed with the included config, release,
 ## License
 
 See the `LICENSE` file for the full license text.
+
+
+## Continuous multi-agent review
+
+Hui Chat includes a four-domain review runner for correctness, security, deployment, and UI behavior. It runs deterministic regression doctors locally and can optionally use GPT-5.6 Multi-agent to review the current Git diff. See `review/README.md` and run:
+
+```bash
+python tools/hui_multi_agent_review.py --no-ai --mode fast
+```

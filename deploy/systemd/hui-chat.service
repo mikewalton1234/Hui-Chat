@@ -13,7 +13,7 @@
 #   sudo chown root:hui /etc/hui/hui-chat.env
 #   sudo chmod 640 /etc/hui/hui-chat.env
 #   sudo systemctl daemon-reload
-#   sudo systemctl enable --now hui
+#   sudo systemctl enable --now hui-chat.service
 #
 # Notes:
 # - Adjust WorkingDirectory, python path, and config path to your install.
@@ -22,8 +22,10 @@
 
 [Unit]
 Description=Chat server powered by Hui Chat
-After=network-online.target redis.service
-Wants=network-online.target redis.service
+After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service
+Wants=network-online.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
 
 [Service]
 Type=simple
@@ -31,7 +33,8 @@ WorkingDirectory=/opt/hui/hui-chat
 EnvironmentFile=/etc/hui/hui-chat.env
 Environment=PYTHONUNBUFFERED=1
 ExecStartPre=/opt/hui/hui-chat/.venv/bin/python tools/config_doctor.py --config /opt/hui/hui-chat/server_config.json
-ExecStartPre=/opt/hui/hui-chat/.venv/bin/python main.py --config /opt/hui/hui-chat/server_config.json --redis-socketio-check
+ExecStartPre=/opt/hui/hui-chat/.venv/bin/python main.py --config /opt/hui/hui-chat/server_config.json --production-config-check --production-config-blocking-only
+ExecStartPre=/opt/hui/hui-chat/.venv/bin/python main.py --config /opt/hui/hui-chat/server_config.json --redis-socketio-check --redis-blocking-only
 ExecStart=/usr/bin/env HUI_CONFIG=/opt/hui/hui-chat/server_config.json HUI_PRODUCTION_WORKERS=1 HUI_WORKERS=1 /opt/hui/hui-chat/.venv/bin/python main.py --production
 Restart=on-failure
 RestartSec=3

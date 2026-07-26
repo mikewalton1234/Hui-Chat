@@ -62,6 +62,8 @@ from health_status import normalize_public_probe_path
 from security import hash_password, verify_password
 from registration_name_policy import normalize_registration_username, validate_registration_username_format
 from account_creation_policy import validate_account_password, password_policy_summary, validate_account_username_style, validate_recovery_pin, recovery_pin_policy_summary
+from performance_tuning import apply_performance_safety_defaults, performance_summary_lines
+from runtime_timing import DEFAULT_RUNTIME_TIMING, apply_runtime_timing_safety_defaults, timing_float, timing_int
 from scaled_redis_autoconfig import (
     RECOMMENDED_RATE_LIMIT_REDIS,
     RECOMMENDED_SOCKETIO_QUEUE_REDIS,
@@ -81,6 +83,7 @@ from public_beta_readiness import (
 )
 from reverse_proxy_generator import format_proxy_generation_report, write_proxy_configs
 from deployment_wizard import format_deployment_kit_report, format_deployment_plan, build_deployment_plan, write_deployment_kit
+from production_config_guard import apply_safe_production_fixes, build_production_config_report, format_production_config_report
 from db.bootstrap import (
     build_postgres_dsn,
     delete_database_via_bootstrap,
@@ -135,6 +138,7 @@ def _brand_ui_text(value: Any, settings: Optional[Dict[str, Any]] = None) -> str
 # but were not present in get_default_settings(). Keep them here so setup's
 # compact save path preserves hand-edited config instead of silently dropping it.
 _RUNTIME_CONFIG_DEFAULTS: Dict[str, Any] = {
+    **DEFAULT_RUNTIME_TIMING,
     "password_reset_spool_file": "logs/reset_links.log",
     "password_reset_spool_allow_remote": False,
     "max_user_file_storage_bytes": 250 * 1024 * 1024,
@@ -202,6 +206,9 @@ _RUNTIME_CONFIG_DEFAULTS: Dict[str, Any] = {
     "password_reset_log_local_links": False,
     "password_reset_max_active_tokens": 3,
     "production_worker_class": "gthread",
+    "auto_detect_production_conflicts": True,
+    "auto_fix_production_conflicts": True,
+    "auto_tune_production_capacity": True,
     "socketio_event_max_payload_bytes": 65536,
     "socketio_event_rate_limit": "180 per minute",
     "socketio_connect_rate_limit": "30 per minute",
@@ -274,6 +281,13 @@ def get_default_settings() -> Dict[str, Any]:
     return {
         # ── Core server ──────────────────────────────────────────────────
         "server_name": DEFAULT_SERVER_NAME,
+        # Admin-managed branding. Assets are static-relative paths only.
+        "branding_logo_enabled": True,
+        "branding_loading_screen_enabled": True,
+        "branding_loading_screen_mode": "animation",
+        "branding_logo_asset": "images/hui-chat-logo.svg",
+        "branding_loading_asset": "images/hui-chat-logo-loading.svg",
+        "branding_asset_revision": "1",
         "server_host": "0.0.0.0",
         "server_port": 5000,
         # Backwards-compat keys (some code paths still check these first)
@@ -288,11 +302,16 @@ def get_default_settings() -> Dict[str, Any]:
         "production_bind": "",
         "production_workers": 1,
         "production_instance_count": 1,
+        "production_threads": 100,
+        "auto_tune_performance": True,
         "production_instance_base_port": 5000,
         "production_instance_bind_host": "127.0.0.1",
         "production_instance_port_step": 1,
         "production_async_mode": "threading",
         "production_loglevel": "info",
+        "auto_detect_production_conflicts": True,
+        "auto_fix_production_conflicts": True,
+        "auto_tune_production_capacity": True,
         "https": False,
         "ssl_cert_file": "",
         "ssl_key_file": "",
@@ -309,6 +328,7 @@ def get_default_settings() -> Dict[str, Any]:
         "database_bootstrap_url": "",  # "database_bootstrap_url": ""
         "db_pool_min": 1,
         "db_pool_max": 50,
+        "db_pool_wait_seconds": 10,
 
         # ── Auth / cookies ───────────────────────────────────────────────
         "admin_user": os.getenv("ADMIN_USER") or "admin",
@@ -833,9 +853,9 @@ def normalize_setup_settings(settings: Dict[str, Any] | None) -> Dict[str, Any]:
         if parsed_public.scheme == "https" and parsed_public.hostname:
             out = apply_hosting_mode_preset(out, "public_beta", public_url)
 
-    # Automatically fill the Redis DB split when the admin chooses multiple
-    # one-worker Hui Chat instances. Admins should not need to memorize DB 0/1/2.
-    apply_scaled_runtime_safety_defaults(out)
+    # Keep normalization observational. The final setup/production guard applies
+    # scaled Redis and DB-pool corrections explicitly so admins can see each
+    # change instead of having it occur silently while loading the file.
 
     # Compatibility mirrors that are derived from current-minute controls.
     if not _setting_missing(out.get("custom_room_idle_minutes")) and _setting_missing(out.get("custom_room_idle_hours")):
@@ -2141,6 +2161,7 @@ def _interactive_setup_legacy(settings: Dict[str, Any]) -> Dict[str, Any]:
         )
         merged["db_pool_min"] = _prompt_int("DB pool min", int(merged.get("db_pool_min") or base["db_pool_min"]), 1, 100)
         merged["db_pool_max"] = _prompt_int("DB pool max", int(merged.get("db_pool_max") or base["db_pool_max"]), 1, 500)
+        merged["db_pool_wait_seconds"] = _prompt_int("DB pool burst wait seconds", int(merged.get("db_pool_wait_seconds") or base["db_pool_wait_seconds"]), 0, 60)
         merged["log_level"] = _prompt_str("Log level (DEBUG/INFO/WARNING/ERROR)", str(merged.get("log_level") or base["log_level"]))
         merged["log_file_path"] = _prompt_str("Log file path", str(merged.get("log_file_path") or base["log_file_path"]))
 
@@ -3414,6 +3435,20 @@ def _edit_server_identity_section(stdscr, merged: Dict[str, Any], base: Dict[str
     merged["production_workers"] = 1
     merged["production_instance_count"] = max(1, min(10, int(fields[5]["value"] or 1)))
     merged["production_instance_base_port"] = int(fields[6]["value"] or merged["server_port"])
+    performance_changed = apply_performance_safety_defaults(merged, force=True)
+    if performance_changed:
+        _tui_scroll_text(
+            stdscr,
+            "Automatic performance tuning",
+            performance_summary_lines(merged) + [
+                "",
+                "These limits keep multi-instance deployments from exhausting PostgreSQL",
+                "or creating an excessive thread count. Advanced operators may disable",
+                "auto_tune_performance and set explicit values later.",
+            ],
+            footer="Enter/Esc returns to setup.",
+            allow_save=False,
+        )
     scaled_changed = apply_scaled_runtime_safety_defaults(merged)
     if scaled_realtime_requested(merged) and any(scaled_changed.values()):
         _tui_scroll_text(
@@ -3867,9 +3902,9 @@ def _edit_voice_and_webrtc_section(stdscr, merged: Dict[str, Any], base: Dict[st
     fields = [
         {"label": "Enable voice chat", "value": bool(merged.get("voice_enabled", True)), "type": "bool", "help": "Turns Hui Chat's voice features on or off."},
         {"label": "Max voice peers per room", "value": int(merged.get("voice_max_room_peers") or 100), "type": "int", "min": 0, "max": 10000, "help": "Default is 100. Set 0 for unlimited or use a lower cap such as 30."},
-        {"label": "Voice invite cooldown seconds", "value": int(merged.get("voice_invite_cooldown_seconds") or base["voice_invite_cooldown_seconds"]), "type": "int", "min": 0, "max": 3600, "help": "Minimum delay between sending repeated voice invites."},
-        {"label": "Voice DM invite TTL seconds", "value": int(merged.get("voice_dm_invite_ttl_seconds") or base["voice_dm_invite_ttl_seconds"]), "type": "int", "min": 1, "max": 3600, "help": "How long a direct voice invite remains valid."},
-        {"label": "Voice DM active TTL seconds", "value": int(merged.get("voice_dm_active_ttl_seconds") or base["voice_dm_active_ttl_seconds"]), "type": "int", "min": 1, "max": 86400, "help": "How long an active direct voice session record stays alive."},
+        {"label": "Voice invite cooldown seconds", "value": int(merged.get("voice_invite_cooldown_seconds") or base["voice_invite_cooldown_seconds"]), "type": "int", "min": 0, "max": 300, "help": "Minimum delay between sending repeated voice invites."},
+        {"label": "Voice DM invite TTL seconds", "value": int(merged.get("voice_dm_invite_ttl_seconds") or base["voice_dm_invite_ttl_seconds"]), "type": "int", "min": 10, "max": 3600, "help": "How long a direct voice invite remains valid."},
+        {"label": "Voice DM active TTL seconds", "value": int(merged.get("voice_dm_active_ttl_seconds") or base["voice_dm_active_ttl_seconds"]), "type": "int", "min": 30, "max": 86400, "help": "How long an active direct voice session record stays alive."},
         {"label": "P2P file transfer enabled", "value": bool(merged.get("p2p_file_enabled", True)), "type": "bool", "help": "Turns peer-to-peer file transfer signaling on or off."},
         {"label": "P2P handshake timeout ms", "value": int(merged.get("p2p_file_handshake_timeout_ms") or base["p2p_file_handshake_timeout_ms"]), "type": "int", "min": 100, "max": 600000, "help": "How long peers wait for the initial P2P handshake before timing out."},
         {"label": "P2P transfer timeout ms", "value": int(merged.get("p2p_file_transfer_timeout_ms") or base["p2p_file_transfer_timeout_ms"]), "type": "int", "min": 1000, "max": 3600000, "help": "How long a file transfer can stall before timing out."},
@@ -4213,7 +4248,7 @@ def _edit_logs_diagnostics_section(stdscr, merged: Dict[str, Any], base: Dict[st
     fields = [
         {"label": "Log level", "value": str(merged.get("log_level") or base["log_level"]), "type": "choice", "options": ["DEBUG", "INFO", "WARNING", "ERROR"], "help": "INFO is the normal default. DEBUG is useful while actively troubleshooting."},
         {"label": "Log file path", "value": str(merged.get("log_file_path") or base["log_file_path"]), "help": "Path for the main server log file."},
-        {"label": "Janitor interval seconds", "value": int(merged.get("janitor_interval_seconds") or base["janitor_interval_seconds"]), "type": "int", "min": 5, "max": 86400, "help": "How often cleanup jobs wake up to process room cleanup and similar background tasks."},
+        {"label": "Janitor interval seconds", "value": int(merged.get("janitor_interval_seconds") or base["janitor_interval_seconds"]), "type": "int", "min": 10, "max": 3600, "help": "How often cleanup jobs wake up to process room cleanup and similar background tasks."},
         {"label": "Max request bytes", "value": int(merged.get("max_request_bytes") or base["max_request_bytes"]), "type": "int", "min": 1024, "max": 2147483647, "help": "Upper size limit for incoming HTTP request bodies."},
         {"label": "Max form memory bytes", "value": int(merged.get("max_form_memory_size") or base["max_form_memory_size"]), "type": "int", "min": 1024, "max": 2147483647, "help": "Memory ceiling for parsed form data."},
         {"label": "Max form parts", "value": int(merged.get("max_form_parts") or base["max_form_parts"]), "type": "int", "min": 1, "max": 100000, "help": "Upper count limit for multipart form segments."},
@@ -4404,7 +4439,12 @@ def _test_redis_connection(storage_uri: str) -> tuple[bool, str]:
     if not (uri.startswith('redis://') or uri.startswith('rediss://')):
         return True, f'Rate-limit storage URI is not Redis-based: {uri}'
     try:
-        client = redis.from_url(uri, socket_connect_timeout=3, socket_timeout=3)
+        client = redis.from_url(
+            uri,
+            socket_connect_timeout=timing_float(merged, "redis_connect_timeout_seconds"),
+            socket_timeout=timing_float(merged, "redis_socket_timeout_seconds"),
+            health_check_interval=timing_int(merged, "redis_health_check_interval_seconds"),
+        )
         try:
             pong = client.ping()
         finally:
@@ -4435,6 +4475,7 @@ def _run_service_checks_menu(stdscr, merged: Dict[str, Any]) -> None:
                 'Run TLS certificate/key check',
                 'Run Redis / rate-limit storage test',
                 'Run Redis + Socket.IO topology check',
+                'Run production settings conflict check',
                 'Run all setup checks',
                 'Back',
             ],
@@ -4443,7 +4484,7 @@ def _run_service_checks_menu(stdscr, merged: Dict[str, Any]) -> None:
         )
         if choice >= 0:
             service_menu_selected = choice
-        if choice in (-1, 5):
+        if choice in (-1, 6):
             return
         if choice == 0:
             ok, msg = _test_smtp_connection(merged)
@@ -4468,6 +4509,16 @@ def _run_service_checks_menu(stdscr, merged: Dict[str, Any]) -> None:
                 allow_save=False,
             )
             continue
+        if choice == 4:
+            production_report = build_production_config_report(merged, live_check=True)
+            _tui_scroll_text(
+                stdscr,
+                'Production settings conflict check',
+                format_production_config_report(production_report).splitlines(),
+                footer='Enter/Esc returns to service checks. Use --production-config-check --production-live-check from terminal too.',
+                allow_save=False,
+            )
+            continue
         smtp_ok, smtp_msg = _test_smtp_connection(merged)
         tls_ok, tls_msg = _test_tls_files(merged)
         redis_topology_report = None
@@ -4478,7 +4529,9 @@ def _run_service_checks_menu(stdscr, merged: Dict[str, Any]) -> None:
             redis_topology_report = {'overall': 'warn'}
         redis_ok, redis_msg = _test_redis_connection(str(merged.get('rate_limit_storage_uri') or merged.get('rate_limit_storage') or ''))
         redis_topology_ok = str((redis_topology_report or {}).get('overall') or 'warn') != 'fail'
-        all_ok = smtp_ok and tls_ok and redis_ok and redis_topology_ok
+        production_report = build_production_config_report(merged, live_check=True)
+        production_ok = str(production_report.get('overall') or 'warn') != 'fail'
+        all_ok = smtp_ok and tls_ok and redis_ok and redis_topology_ok and production_ok
         _tui_scroll_text(
             stdscr,
             'All setup checks',
@@ -4490,6 +4543,8 @@ def _run_service_checks_menu(stdscr, merged: Dict[str, Any]) -> None:
                 f"Redis: {'OK' if redis_ok else 'CHECK'} - {redis_msg}",
                 '',
                 f"Redis + Socket.IO topology: {'OK' if redis_topology_ok else 'CHECK'} - {(redis_topology_report or {}).get('overall', 'warn').upper()}",
+                '',
+                f"Production settings conflicts: {'OK' if production_ok else 'CHECK'} - {production_report.get('overall', 'warn').upper()}",
 
             ],
             footer='Enter/Esc returns to the service checks menu.',
@@ -5251,6 +5306,54 @@ def _run_setup_tui(settings: Dict[str, Any]) -> Dict[str, Any]:
                 if not _show_setup_summary_screen(stdscr, merged, runtime, allow_save=True):
                     runtime["db_status"] = "Save was paused so you can keep reviewing or editing the setup values."
                     continue
+
+                timing_changes = apply_runtime_timing_safety_defaults(merged)
+                if timing_changes:
+                    runtime["db_status"] = "Setup normalized timing/Redis latency settings so production components use one policy."
+
+                # Production settings are checked as one effective topology.  This
+                # catches values that look valid by themselves but conflict when
+                # combined (workers/Socket.IO, Redis, DB pools, ports, proxy, CPU,
+                # memory, debug/logging, and stale environment overrides).
+                if bool(merged.get("auto_detect_production_conflicts", True)) and str(merged.get("run_mode") or "").strip().lower() == "production":
+                    changes = []
+                    if bool(merged.get("auto_fix_production_conflicts", True)):
+                        changes = apply_safe_production_fixes(merged)
+                    production_report = build_production_config_report(merged, live_check=True)
+                    report_lines = format_production_config_report(production_report).splitlines()
+                    if changes:
+                        report_lines = [
+                            "Setup automatically corrected these safe production conflicts:",
+                            *[f"  - {item['key']}: {item.get('old')!r} -> {item.get('new')!r} ({item.get('reason')})" for item in changes],
+                            "",
+                            *report_lines,
+                        ]
+                    if production_report.get("overall") == "fail":
+                        _tui_scroll_text(
+                            stdscr,
+                            "Production settings conflict",
+                            report_lines + ["", "Setup will not finish until the FAIL items are corrected."],
+                            footer="Enter/Esc returns to setup.",
+                            allow_save=False,
+                        )
+                        runtime["db_status"] = "Production save was blocked because settings or environment overrides would interfere with the server."
+                        continue
+                    if production_report.get("overall") == "warn":
+                        proceed = _tui_yes_no(
+                            stdscr,
+                            "Production warnings",
+                            "No blocking conflict remains, but setup found production warnings. Review them before continuing?",
+                            default=True,
+                        )
+                        if proceed:
+                            _tui_scroll_text(
+                                stdscr,
+                                "Production configuration report",
+                                report_lines,
+                                footer="Enter/Esc returns to setup.",
+                                allow_save=False,
+                            )
+
                 if not str(merged.get("database_url") or "").strip():
                     _tui_message(stdscr, "Missing database", ["Please configure a PostgreSQL database before saving."], error=True)
                     continue
