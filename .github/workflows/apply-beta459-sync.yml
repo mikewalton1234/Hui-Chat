@@ -6,12 +6,18 @@ on:
       - agent/add-multi-agent-review
     paths:
       - _sync_core/READY
+  pull_request:
+    branches:
+      - main
+    paths:
+      - _sync_core/READY
 
 permissions:
   contents: write
 
 jobs:
   apply:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Check out target branch
