@@ -1,0 +1,78 @@
+name: Hui Chat Multi-Agent Review
+
+on:
+  pull_request:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 8 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hui-multi-agent-review-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-review.txt
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install review dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r requirements-review.txt
+
+      - name: Resolve review base
+        id: review-base
+        shell: bash
+        run: |
+          if [[ -n "${{ github.base_ref }}" ]]; then
+            echo "base=origin/${{ github.base_ref }}" >> "$GITHUB_OUTPUT"
+          elif git rev-parse HEAD^ >/dev/null 2>&1; then
+            echo "base=HEAD^" >> "$GITHUB_OUTPUT"
+          else
+            echo "base=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run four-domain review
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HUI_REVIEW_MODEL: ${{ vars.HUI_REVIEW_MODEL || 'gpt-5.6-sol' }}
+          HUI_REVIEW_LIVE_URL: ${{ vars.HUI_REVIEW_LIVE_URL }}
+        run: |
+          ARGS=(--mode full --fail-on fail)
+          if [[ -n "${{ steps.review-base.outputs.base }}" ]]; then
+            ARGS+=(--base "${{ steps.review-base.outputs.base }}")
+          fi
+          if [[ -n "$HUI_REVIEW_LIVE_URL" ]]; then
+            ARGS+=(--live-url "$HUI_REVIEW_LIVE_URL")
+          fi
+          python tools/hui_multi_agent_review.py "${ARGS[@]}"
+
+      - name: Upload review reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hui-chat-multi-agent-review-${{ github.run_number }}
+          path: review_reports/
+          if-no-files-found: warn
+          retention-days: 30
