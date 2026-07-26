@@ -49,7 +49,7 @@ jobs:
           rm -f .github/workflows/export-source-snapshot.yml
           rm -f .github/workflows/apply-beta459-sync.yml
 
-      - name: Verify synchronized source
+      - name: Verify version and syntax
         shell: bash
         run: |
           set -euo pipefail
@@ -58,22 +58,43 @@ jobs:
           if command -v node >/dev/null 2>&1; then
             find static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
           fi
-          python tools/runtime_timing_consistency_doctor.py
-          python tools/production_config_guard_doctor.py
-          python tools/server_installation_doctor.py
-          python tools/deployment_ops_doctor.py
-          python tools/deployment_ops_deep_doctor.py
-          python tools/realtime_auth_doctor.py
-          python tools/moderation_doctor.py
-          python tools/multi_agent_review_doctor.py
-          test ! -e _sync_probe.txt
-          test ! -e _sync_test_base.txt
-          test ! -e _another_probe.txt
-          test ! -e _stop_probe.txt
-          test ! -e _last_probe.txt
-          test ! -e _ignore.txt
-          test ! -e _cleanup_me.txt
-          test ! -e .github/workflows/export-source-snapshot.yml
+
+      - name: Verify runtime timing consistency
+        run: python tools/runtime_timing_consistency_doctor.py
+
+      - name: Verify production configuration guard
+        run: python tools/production_config_guard_doctor.py
+
+      - name: Verify installation and upgrade flow
+        run: python tools/server_installation_doctor.py
+
+      - name: Verify deployment operations
+        run: python tools/deployment_ops_doctor.py
+
+      - name: Verify deep systemd deployment
+        run: python tools/deployment_ops_deep_doctor.py
+
+      - name: Verify realtime authorization
+        run: python tools/realtime_auth_doctor.py
+
+      - name: Verify moderation and timed IP bans
+        run: python tools/moderation_doctor.py
+
+      - name: Verify multi-agent review configuration
+        run: python tools/multi_agent_review_doctor.py
+
+      - name: Verify transfer cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            _sync_probe.txt _sync_test_base.txt _another_probe.txt \
+            _stop_probe.txt _last_probe.txt _ignore.txt _cleanup_me.txt \
+            _sync_core _sync_payload \
+            .github/workflows/export-source-snapshot.yml \
+            .github/workflows/apply-beta459-sync.yml; do
+            test ! -e "$path"
+          done
 
       - name: Commit synchronized source
         shell: bash
