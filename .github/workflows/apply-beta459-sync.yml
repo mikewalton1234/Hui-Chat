@@ -30,24 +30,14 @@ jobs:
           ref: agent/add-multi-agent-review
           fetch-depth: 0
 
-      - name: Reconstruct and verify sync payload
+      - name: Reconstruct and verify sync payloads
         shell: bash
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import base64
-          from pathlib import Path
-
-          root = Path('_sync_core')
-          encoded = ''.join((root / f'part-{index:02d}').read_text(encoding='utf-8') for index in range(6))
-          # Repair the single character lost during the staged transfer. The
-          # resulting binary is checked against its original SHA-256 below.
-          encoded = encoded[:60846] + 'T' + encoded[60846:]
-          Path('/tmp/hui-sync.tar.xz').write_bytes(base64.b64decode(encoded, validate=True))
-          PY
-          echo "291328c57506d385f5a26d91ce4bcb18ba8d1408c7222a23481bce7b56e0d2d1  /tmp/hui-sync.tar.xz" | sha256sum -c -
+          cat _sync_core/part-* | base64 --decode > "$RUNNER_TEMP/hui-sync.tar.xz"
+          echo "291328c57506d385f5a26d91ce4bcb18ba8d1408c7222a23481bce7b56e0d2d1  $RUNNER_TEMP/hui-sync.tar.xz" | sha256sum -c -
           mkdir -p "$RUNNER_TEMP/hui-sync"
-          tar -xJf /tmp/hui-sync.tar.xz -C "$RUNNER_TEMP/hui-sync"
+          tar -xJf "$RUNNER_TEMP/hui-sync.tar.xz" -C "$RUNNER_TEMP/hui-sync"
           echo "f2d40f48b38d33b7866107670a828e7a274c9a31b45140916df28555070b1aca  $RUNNER_TEMP/hui-sync/core_sync.patch" | sha256sum -c -
 
           base64 --decode _sync_core/final-extra.b64 > "$RUNNER_TEMP/hui-final.patch.xz"
@@ -74,7 +64,7 @@ jobs:
           rm -f _another_probe.txt _cleanup_me.txt _ignore.txt _last_probe.txt
           rm -f _stop_probe.txt _sync_probe.txt _sync_test_base.txt
 
-      - name: Verify synchronized source
+      - name: Verify version and syntax
         shell: bash
         run: |
           set -euo pipefail
@@ -83,18 +73,43 @@ jobs:
           if command -v node >/dev/null 2>&1; then
             find static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
           fi
-          python tools/runtime_timing_consistency_doctor.py
-          python tools/production_config_guard_doctor.py
-          python tools/server_installation_doctor.py
-          python tools/deployment_ops_doctor.py
-          python tools/deployment_ops_deep_doctor.py
-          python tools/realtime_auth_doctor.py
-          python tools/moderation_doctor.py
-          python tools/multi_agent_review_doctor.py
-          test ! -e _sync_core
-          test ! -e _sync_payload
-          test ! -e .github/hui-sync
-          test ! -e .github/workflows/export-source-snapshot.yml
+
+      - name: Verify runtime timing consistency
+        run: python tools/runtime_timing_consistency_doctor.py
+
+      - name: Verify production configuration guard
+        run: python tools/production_config_guard_doctor.py
+
+      - name: Verify installation and upgrade flow
+        run: python tools/server_installation_doctor.py
+
+      - name: Verify deployment operations
+        run: python tools/deployment_ops_doctor.py
+
+      - name: Verify deep systemd deployment
+        run: python tools/deployment_ops_deep_doctor.py
+
+      - name: Verify realtime authorization
+        run: python tools/realtime_auth_doctor.py
+
+      - name: Verify moderation and timed IP bans
+        run: python tools/moderation_doctor.py
+
+      - name: Verify multi-agent review configuration
+        run: python tools/multi_agent_review_doctor.py
+
+      - name: Verify transfer cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          for path in \
+            _sync_core _sync_payload .github/hui-sync \
+            _sync_probe.txt _sync_test_base.txt _another_probe.txt \
+            _stop_probe.txt _last_probe.txt _ignore.txt _cleanup_me.txt \
+            .github/workflows/export-source-snapshot.yml \
+            .github/workflows/apply-beta459-sync.yml; do
+            test ! -e "$path"
+          done
 
       - name: Commit synchronized source
         shell: bash
