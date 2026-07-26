@@ -1,0 +1,135 @@
+name: Verify Hui Chat beta.459 sync
+
+on:
+  push:
+    branches:
+      - agent/add-multi-agent-review
+    paths:
+      - ".github/workflows/verify-beta459-sync.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out review branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/add-multi-agent-review
+          fetch-depth: 0
+
+      - name: Determine synchronization state
+        id: state
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '\r\n' < VERSION.txt 2>/dev/null || true)"
+          if [[ "$version" == "0.11.0-beta.459" ]] \
+             && [[ -f runtime_timing.py ]] \
+             && [[ -f production_config_guard.py ]] \
+             && [[ -f scripts/install_server.sh ]] \
+             && [[ -f tools/runtime_timing_consistency_doctor.py ]]; then
+            echo "synced=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "synced=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate synchronized source
+        if: steps.state.outputs.synced == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import ast, json
+          from pathlib import Path
+          for p in Path('.').rglob('*.py'):
+              if any(x in p.parts for x in ('.git', '.venv', '__pycache__')):
+                  continue
+              ast.parse(p.read_text(encoding='utf-8'), filename=str(p))
+          for p in Path('.').rglob('*.json'):
+              if any(x in p.parts for x in ('.git', '.venv', 'instance', 'logs', 'uploads', 'private_uploads')):
+                  continue
+              json.loads(p.read_text(encoding='utf-8'))
+          PY
+          find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          find static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+          python tools/runtime_timing_consistency_doctor.py
+          python tools/production_config_guard_doctor.py
+          python tools/server_installation_doctor.py
+          python tools/deployment_ops_doctor.py
+          python tools/deployment_ops_deep_doctor.py
+          python tools/realtime_auth_doctor.py
+          python tools/moderation_doctor.py
+          python tools/multi_agent_review_doctor.py
+
+      - name: Record result and clean transfer files
+        shell: bash
+        env:
+          SYNCED: ${{ steps.state.outputs.synced }}
+        run: |
+          set -euo pipefail
+          rm -rf .github/hui-sync
+          rm -f review/BETA459_SYNC_VERIFIED.md review/BETA459_SYNC_BLOCKED.md
+          if [[ "$SYNCED" == "true" ]]; then
+            cat > review/BETA459_SYNC_VERIFIED.md <<'EOF'
+          # beta.459 synchronization verified
+
+          GitHub Actions confirmed that this branch contains the Hui Chat 0.11.0-beta.459 setup and production hardening changes and that the source, shell, JavaScript, timing, production-guard, installer, deployment, realtime-auth, moderation, and review doctors passed.
+          EOF
+          else
+            cat > review/BETA459_SYNC_BLOCKED.md <<'EOF'
+          # beta.459 synchronization not present
+
+          The connected GitHub branch did not contain the complete beta.459 source at verification time. Temporary transfer files were removed and the pull request was intentionally left as a review-infrastructure change rather than being mislabeled as a full source upgrade.
+          EOF
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --quiet || git commit -m "Record beta.459 synchronization status"
+          git push origin HEAD:agent/add-multi-agent-review
+
+      - name: Update pull request after successful verification
+        if: steps.state.outputs.synced == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cat > /tmp/pr-body.md <<'EOF'
+          ## What changed
+
+          - Upgraded the reviewed application source to Hui Chat 0.11.0-beta.459.
+          - Reworked the Arch/EndeavourOS and Debian/Ubuntu server installer and upgrade path, including `.venv`, PostgreSQL, Valkey/Redis, systemd, multi-instance, and secret-preservation handling.
+          - Added a hard production configuration guard that detects conflicting or unsafe settings, automatically corrects safe conflicts, and refuses production startup when unresolved settings would break or overload the server.
+          - Added cgroup-, affinity-, CPU-, and memory-aware production tuning for instance count, worker threads, database pool sizing, and Redis role separation.
+          - Removed the hidden 50-connection database-pool floor.
+          - Centralized runtime timing for Socket.IO, Redis health/connect timeouts, presence heartbeat/TTL, janitors, voice/P2P, and IP-ban behavior.
+          - Corrected timed IP-ban units and aligned refresh-token/cookie lifetime constraints.
+          - Added deterministic setup, production, deployment, timing, realtime-auth, moderation, packaging, and multi-agent review doctors.
+
+          ## Validation
+
+          GitHub Actions verified Python syntax, JSON parsing, shell syntax, all JavaScript files, runtime timing consistency, production guard behavior, installer behavior, deployment/systemd behavior, realtime authorization, moderation, and multi-agent configuration before this pull request was relabeled.
+
+          ## Limitation
+
+          These checks validate configuration and source behavior, but a real PostgreSQL and Valkey/Redis service boot on the intended host is still required before production deployment. No system can guarantee that every workload will experience zero slowdown; the new guard prevents known configuration conflicts and applies conservative capacity tuning.
+          EOF
+          gh pr edit 1 \
+            --repo mikewalton1234/Hui-Chat \
+            --title "Harden setup and production configuration" \
+            --body-file /tmp/pr-body.md
+          gh pr comment 1 --repo mikewalton1234/Hui-Chat --body "beta.459 source synchronization and production-hardening validation passed. The pull request title and description were updated automatically."
+
+      - name: Comment when synchronization is blocked
+        if: steps.state.outputs.synced != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh pr comment 1 --repo mikewalton1234/Hui-Chat --body "The beta.459 source was not present on the remote branch, so the workflow removed temporary transfer files and deliberately did not relabel this pull request as a full source upgrade."
