@@ -1470,6 +1470,17 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     return _normalizeOk(j, r.ok);
   }
 
+  async function postMultipart(url, formData){
+    const r = await adminFetch(url, {method:'POST', body: formData});
+    const j = await r.json().catch(()=>null);
+    if (!r.ok){
+      const e = (j && (j.error || j.message)) ? (j.error || j.message) : `HTTP ${r.status}`;
+      log(`ERROR ${r.status} POST ${url} :: ${e}`);
+      return {ok:false, error:e, _status:r.status, _url:url};
+    }
+    return _normalizeOk(j, r.ok);
+  }
+
   async function postJSON(url, obj){
     const r = await adminFetch(url, {
       method:'POST',
@@ -1920,6 +1931,34 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
       sectionHeroNode('Server', 'System settings and service integrations', 'Change server-wide behavior here. Settings are grouped by purpose so display, limits, cleanup, uploads, and integrations do not blend together.'),
       cardNode([rowNode([appendChildren(el('div'), [h4Node('Admin analytics snapshot', 'margin:0'), mutedNode('Top actors, affected areas, and action mix from the last 7 days. Opaque ids are grouped so this snapshot stays readable.')]), el('div', {id:'ecapAnalyticsGeneratedAt', class:'ecap-pill warn', text:'generated: —'})], 'justify-content:space-between;align-items:center'), gridNode('ecap-grid2', [titledListCard('Top actors (7d)', 'ecapTopActors', {cardStyle:'margin:0', listClass:'ecap-list compact', listStyle:'max-height:180px'}), titledListCard('Top affected areas (7d)', 'ecapTopTargets', {cardStyle:'margin:0', listClass:'ecap-list compact', listStyle:'max-height:180px'})], 'margin-top:10px')]),
       cardNode([h4Node('System settings (admin)'), mutedNode('General server/runtime toggles. Some changes may require clients to reload or a server restart.'), hrNode(), el('div', {id:'ecapSettingsSummary', class:'ecap-settingsSummary'}), el('div', {id:'ecapSettingsForm', class:'ecap-settingsGroups'}), hrNode(), rowNode([buttonNode('ecapSettingsReload', 'Reload'), buttonNode('ecapSettingsApply', 'Apply', 'ecap-btn primary tight')])]),
+      cardNode([
+        h4Node('Branding: logo and loading screen'),
+        mutedNode('Control the header/login logo and startup screen separately. Uploaded files are shared by all configured Hui-Chat instances. Clients must reload to see a saved change.'),
+        hrNode(),
+        gridNode('ecap-grid2', [
+          cardNode([
+            h4Node('Display options', 'margin:0'),
+            checkLabelNode('ecapBrandLogoEnabled', 'Show logo on login and chat header', 'ecap-pill', 'width:auto'),
+            checkLabelNode('ecapBrandLoadingEnabled', 'Show loading screen while chat opens', 'ecap-pill', 'width:auto'),
+            mutedNode('Loading-screen content'),
+            selectNode('ecapBrandLoadingMode', [['animation','Uploaded animation/image'], ['text','Text only — Loading…']]),
+            el('div', {id:'ecapBrandStatus', class:'ecap-muted', text:'Branding status: —'})
+          ], {style:'margin:0'}),
+          cardNode([
+            h4Node('Replace assets', 'margin:0'),
+            mutedNode('Logo: PNG, JPEG, GIF, or WebP (8 MB maximum).'),
+            inputNode('ecapBrandLogoFile', '', {type:'file', accept:'image/png,image/jpeg,image/gif,image/webp'}),
+            rowNode([buttonNode('ecapBrandLogoUpload', 'Upload new logo', 'ecap-btn primary tight')], 'margin-top:6px'),
+            hrNode(),
+            mutedNode('Loading animation/image: PNG, GIF, or WebP (15 MB maximum).'),
+            inputNode('ecapBrandLoadingFile', '', {type:'file', accept:'image/png,image/gif,image/webp'}),
+            rowNode([buttonNode('ecapBrandLoadingUpload', 'Upload loading animation', 'ecap-btn primary tight')], 'margin-top:6px')
+          ], {style:'margin:0'})
+        ], 'margin-top:10px'),
+        el('div', {id:'ecapBrandPreviewGrid', class:'ecap-grid2', style:'margin-top:10px'}),
+        hrNode(),
+        rowNode([buttonNode('ecapBrandReload', 'Reload branding'), buttonNode('ecapBrandApply', 'Save display options', 'ecap-btn primary tight')])
+      ], {style:'margin-top:10px'}),
       cardNode([h4Node('GIFs (GIPHY) (admin)'), mutedNode('GIF search uses a server-side proxy. If the key is missing, the GIF modal shows an error. The key is stored in the server settings file.'), hrNode(), gridNode('ecap-grid2', [cardNode([mutedNode('API key'), rowNode([inputNode('ecapGiphyKey', 'Paste GIPHY key…', {type:'password'}), buttonNode('ecapGiphyShow', 'Show')], 'margin-top:10px'), appendChildren(mutedNode('Status: ', 'div'), [el('b', {id:'ecapGiphyKeyStatus', style:'font-weight:780', text:'—'})])], {style:'margin:0'}), cardNode([mutedNode('Search policy'), rowNode([inputNode('ecapGiphyRating', 'pg-13'), inputNode('ecapGiphyLang', 'en'), inputNode('ecapGiphyLimit', '24', {inputmode:'numeric'})], 'margin-top:10px'), mutedNode('rating / language / default limit')], {style:'margin:0'})]), hrNode(), rowNode([buttonNode('ecapGiphyReload', 'Reload'), buttonNode('ecapGiphyApply', 'Apply', 'ecap-btn primary tight')])], {style:'margin-top:10px'})
     ]);
   }
@@ -1929,7 +1968,7 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     appendChildren(host, [
       sectionHeroNode('Protection', 'Safety and anti-abuse', 'Use this area for raid response, rate-limit tuning, and abuse controls that affect the whole server.'),
       cardNode([h4Node('Incident mode'), mutedNode('Apply a preset for abuse spikes or raids. Runtime changes happen immediately; persistence is optional.'), hrNode(), rowNode([selectNode('ecapIncidentPreset', ['soft_lockdown', 'hard_lockdown', 'raid_mode', 'silent_observe']), checkLabelNode('ecapIncidentPersist', 'persist', 'ecap-pill', 'width:auto;margin-right:6px'), buttonNode('ecapIncidentApply', 'Apply', 'ecap-btn primary tight'), buttonNode('ecapIncidentDisable', 'Disable')]), rowNode([el('div', {id:'ecapIncidentStatus', class:'ecap-pill', text:'Incident mode: —'})])]),
-      cardNode([h4Node('IP ban'), mutedNode('Blocks a normalized IPv4/IPv6 address and revokes matching active auth sessions/tokens. Your current admin IP is protected from self-ban.'), hrNode(), gridNode('ecap-grid2', [inputNode('ecapBanIpAddress', 'IP address'), inputNode('ecapBanIpReason', 'Reason')]), hrNode(), rowNode([buttonNode('ecapBanIpBtn', 'Ban IP', 'ecap-btn danger tight')])], {style:'margin-top:10px'}),
+      cardNode([h4Node('IP ban'), mutedNode('Blocks a normalized IPv4/IPv6 address and revokes matching active auth sessions/tokens. Your current admin IP is protected from self-ban.'), hrNode(), gridNode('ecap-grid3', [inputNode('ecapBanIpAddress', 'IP address'), inputNode('ecapBanIpReason', 'Reason'), inputNode('ecapBanIpMinutes', 'Minutes (blank = server default; 0 = permanent)', {type:'number', min:'0', max:'525600', step:'1', inputmode:'numeric'})]), hrNode(), rowNode([buttonNode('ecapBanIpBtn', 'Ban IP', 'ecap-btn danger tight')])], {style:'margin-top:10px'}),
       cardNode([h4Node('Anti-abuse (admin)'), mutedNode('Updates apply immediately on server. Be careful with very low windows/limits.'), hrNode(), el('div', {id:'ecapAntiForm', class:'ecap-grid2'}), hrNode(), rowNode([buttonNode('ecapAntiReload', 'Reload'), buttonNode('ecapAntiApply', 'Apply', 'ecap-btn primary tight')])], {style:'margin-top:10px'})
     ]);
   }
@@ -4347,6 +4386,94 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     secSettings.querySelector('#ecapSettingsApply').addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'settings:apply', 'Saving', applyGeneralSettings));
     loadGeneralSettings();
 
+    // BRANDING SETTINGS
+    const brandLogoEnabled = secSettings.querySelector('#ecapBrandLogoEnabled');
+    const brandLoadingEnabled = secSettings.querySelector('#ecapBrandLoadingEnabled');
+    const brandLoadingMode = secSettings.querySelector('#ecapBrandLoadingMode');
+    const brandStatus = secSettings.querySelector('#ecapBrandStatus');
+    const brandLogoFile = secSettings.querySelector('#ecapBrandLogoFile');
+    const brandLoadingFile = secSettings.querySelector('#ecapBrandLoadingFile');
+    const brandPreviewGrid = secSettings.querySelector('#ecapBrandPreviewGrid');
+    let brandCache = null;
+
+    function renderBrandingPreviews(current){
+      if (!brandPreviewGrid) return;
+      clearNode(brandPreviewGrid);
+      const entries = [
+        ['Current logo', current && current.logo_url, !!(current && current.logo_enabled)],
+        ['Current loading asset', current && current.loading_url, !!(current && current.loading_screen_enabled && current.loading_screen_mode === 'animation')]
+      ];
+      for (const [title, url, active] of entries){
+        const card = cardNode([h4Node(title, 'margin:0'), mutedNode(active ? 'Enabled' : 'Currently hidden or unused')], {style:'margin:0'});
+        if (url){
+          const img = el('img', {src:url, alt:title});
+          img.style.display = 'block';
+          img.style.width = '100%';
+          img.style.height = '120px';
+          img.style.marginTop = '8px';
+          img.style.objectFit = 'contain';
+          img.style.border = '1px solid rgba(100,120,160,.28)';
+          img.style.borderRadius = '8px';
+          img.style.background = '#eef3fb';
+          card.appendChild(img);
+        }
+        brandPreviewGrid.appendChild(card);
+      }
+    }
+
+    async function loadBrandingSettings(){
+      const j = await getJSON('/admin/settings/branding');
+      brandCache = (j && j.ok && j.settings) ? j.settings : null;
+      if (!brandCache){
+        if (brandStatus) brandStatus.textContent = 'Branding status: unavailable';
+        return;
+      }
+      if (brandLogoEnabled) brandLogoEnabled.checked = !!brandCache.logo_enabled;
+      if (brandLoadingEnabled) brandLoadingEnabled.checked = !!brandCache.loading_screen_enabled;
+      if (brandLoadingMode) brandLoadingMode.value = String(brandCache.loading_screen_mode || 'animation');
+      if (brandStatus){
+        brandStatus.textContent = `Logo ${brandCache.logo_enabled ? 'on' : 'off'} · loading ${brandCache.loading_screen_enabled ? brandCache.loading_screen_mode : 'off'} · revision ${brandCache.asset_revision || '—'}`;
+      }
+      renderBrandingPreviews(brandCache);
+    }
+
+    async function applyBrandingSettings(){
+      const payload = {
+        logo_enabled: !!(brandLogoEnabled && brandLogoEnabled.checked),
+        loading_screen_enabled: !!(brandLoadingEnabled && brandLoadingEnabled.checked),
+        loading_screen_mode: brandLoadingMode ? String(brandLoadingMode.value || 'animation') : 'animation'
+      };
+      const j = await postJSON('/admin/settings/branding', payload);
+      if (j && j.ok){
+        toast('ok', 'Branding settings saved', 'Reload login/chat pages to see the change.', 5000);
+        await loadBrandingSettings();
+      } else {
+        toast('err', 'Branding save failed', j && j.error ? j.error : 'unknown', 5200);
+      }
+    }
+
+    async function uploadBrandingAsset(kind){
+      const input = kind === 'logo' ? brandLogoFile : brandLoadingFile;
+      const file = input && input.files ? input.files[0] : null;
+      if (!file) return toast('warn', 'Choose a file', kind === 'logo' ? 'Select a new logo first.' : 'Select a loading animation/image first.');
+      const fd = new FormData();
+      fd.append('file', file, file.name || `${kind}.bin`);
+      const j = await postMultipart(`/admin/settings/branding/upload/${kind}`, fd);
+      if (j && j.ok){
+        if (input) input.value = '';
+        toast('ok', kind === 'logo' ? 'Logo uploaded' : 'Loading asset uploaded', 'Reload login/chat pages to see it.', 5000);
+        await loadBrandingSettings();
+      } else {
+        toast('err', 'Branding upload failed', j && j.error ? j.error : 'unknown', 6000);
+      }
+    }
+
+    secSettings.querySelector('#ecapBrandReload')?.addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'branding:reload', 'Loading', loadBrandingSettings));
+    secSettings.querySelector('#ecapBrandApply')?.addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'branding:apply', 'Saving', applyBrandingSettings));
+    secSettings.querySelector('#ecapBrandLogoUpload')?.addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'branding:upload-logo', 'Uploading', ()=>uploadBrandingAsset('logo')));
+    secSettings.querySelector('#ecapBrandLoadingUpload')?.addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'branding:upload-loading', 'Uploading', ()=>uploadBrandingAsset('loading')));
+    loadBrandingSettings();
+
     // GIF SETTINGS (GIPHY)
     const giphyKeyInput = secSettings.querySelector('#ecapGiphyKey');
     const giphyShowBtn = secSettings.querySelector('#ecapGiphyShow');
@@ -4548,17 +4675,30 @@ def build_admin_injection_snippet(csp_nonce: str | None = None) -> str:
     secSafety.querySelector('#ecapBanIpBtn')?.addEventListener('click', (e)=> withAdminAction(e.currentTarget, 'safety:ban-ip', 'Banning', async ()=>{
       const ip = (secSafety.querySelector('#ecapBanIpAddress')?.value || '').trim();
       const reason = (secSafety.querySelector('#ecapBanIpReason')?.value || '').trim() || 'Manual IP ban';
+      const minutesText = (secSafety.querySelector('#ecapBanIpMinutes')?.value || '').trim();
+      let minutes = null;
+      if (minutesText !== ''){
+        const parsed = Number(minutesText);
+        if (!Number.isInteger(parsed) || parsed < 0 || parsed > 525600){
+          return toast('warn', 'Invalid duration', 'Use a whole number from 0 to 525600 minutes');
+        }
+        minutes = parsed;
+      }
       if (!ip) return toast('warn', 'Missing IP', 'Enter an IPv4 or IPv6 address first');
-      const ok = await adminConfirm('Ban IP address', `Ban ${ip}? Matching active sessions/tokens will be revoked.`, {danger:true, confirmText:'Ban IP'});
+      const durationLabel = minutes === null ? 'the server default duration' : (minutes === 0 ? 'permanently' : `for ${minutes} minute(s)`);
+      const ok = await adminConfirm('Ban IP address', `Ban ${ip} ${durationLabel}? Matching active sessions/tokens will be revoked.`, {danger:true, confirmText:'Ban IP'});
       if (!ok) return;
-      const j = await postForm('/admin/ban_ip', {ip, reason});
+      const payload = {ip, reason};
+      if (minutes !== null) payload.minutes = String(minutes);
+      const j = await postForm('/admin/ban_ip', payload);
       if (j && j.ok){
         const sessions = Number(j.revoked_sessions || 0);
         const tokens = Number(j.revoked_tokens || 0);
-        toast('ok', 'IP banned', `${j.ip || ip} • ${sessions} session(s), ${tokens} token(s)`);
+        toast('ok', 'IP banned', `${j.ip || ip} • ${j.expires_at ? `${j.minutes} minute(s)` : 'permanent'} • ${sessions} session(s), ${tokens} token(s)`);
         log(`ip banned ${j.ip || ip}; sessions=${sessions}; tokens=${tokens}`);
         secSafety.querySelector('#ecapBanIpAddress').value = '';
         secSafety.querySelector('#ecapBanIpReason').value = '';
+        secSafety.querySelector('#ecapBanIpMinutes').value = '';
         refreshModeration();
         refreshStats();
       } else {

@@ -2,7 +2,7 @@
 
 Self-hosted Python/Flask chat server with rooms, private messages, group chat, admin tools, file/media sharing, voice/webcam (WebRTC), and more.
 
-**Version:** 0.11.0-beta.447
+**Version:** 0.11.0-beta.459
 
 ## How to run
 

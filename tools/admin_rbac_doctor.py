@@ -50,6 +50,8 @@ MANUAL_REAUTH_ENDPOINTS = {
     "admin_settings_gifs",
     "admin_settings_general",
     "admin_settings_antiabuse",
+    "admin_settings_branding",
+    "admin_settings_branding_upload",
 }
 
 ROUTE_RE = re.compile(r"@app\.(?:route|get|post|put|patch|delete)\((?P<args>.*)\)")

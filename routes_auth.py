@@ -48,6 +48,7 @@ from constants import (
     sound_pack_local_builtins_enabled,
 )
 from hui_voice_protocol import hui_voice_bool, hui_voice_client_config, hui_voice_room_limit
+from runtime_timing import timing_int
 from webrtc_ice_config import ice_server_summary, p2p_ice_servers, voice_ice_servers
 from database import get_db
 from database import (
@@ -1006,8 +1007,16 @@ def register_auth_routes(app, settings, limiter=None):
             access_claims, refresh_claims = {}, {}
 
         samesite = _safe_lan_cookie_samesite()
-        access_max_age = max(60, int(settings.get("access_token_minutes", 30) or 30) * 60)
-        refresh_max_age = max(3600, int(settings.get("refresh_token_days", 7) or 7) * 24 * 60 * 60)
+        try:
+            access_minutes = max(1, min(1440, int(settings.get("access_token_minutes", 30) or 30)))
+        except Exception:
+            access_minutes = 30
+        try:
+            refresh_days = max(1, min(365, int(settings.get("refresh_token_days", 7) or 7)))
+        except Exception:
+            refresh_days = 7
+        access_max_age = access_minutes * 60
+        refresh_max_age = refresh_days * 24 * 60 * 60
 
         resp.set_cookie(
             app.config.get("JWT_ACCESS_COOKIE_NAME", "hui_access"),
@@ -1641,6 +1650,7 @@ def register_auth_routes(app, settings, limiter=None):
             "idle_logout_seconds": idle_logout_seconds,
             "presence_idle_minutes": max(0, int(settings.get("presence_idle_minutes", 15) or 0)),
             "presence_offline_minutes": max(0, int(settings.get("presence_offline_minutes", 0) or 0)),
+            "shared_state_heartbeat_seconds": timing_int(settings, "shared_state_heartbeat_seconds"),
             "max_dm_file_bytes": _client_int_setting("max_dm_file_bytes", 10 * 1024 * 1024, minimum=1, maximum=512 * 1024 * 1024),
             "max_group_file_bytes": _client_int_setting("max_group_upload_bytes", settings.get("max_group_file_bytes", settings.get("max_dm_file_bytes", 10 * 1024 * 1024)), minimum=1, maximum=1024 * 1024 * 1024),
             "max_group_upload_bytes": _client_int_setting("max_group_upload_bytes", settings.get("max_group_file_bytes", settings.get("max_dm_file_bytes", 10 * 1024 * 1024)), minimum=1, maximum=1024 * 1024 * 1024),

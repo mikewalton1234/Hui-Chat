@@ -170,7 +170,7 @@ def main() -> int:
         label = f"{h.file.relative_to(ROOT)}:{h.line} {h.event}/{h.function}"
         if h.event not in ALLOWED_NO_JWT and "jwt_required" not in dec_blob:
             failures.append(f"missing jwt_required: {label}")
-        if h.event not in ALLOWED_NO_JWT and "_reject_if_stale_socket_session" not in h.body:
+        if h.event not in ALLOWED_NO_JWT and not any(token in h.body for token in ("_reject_if_stale_socket_session", "_require_live_socket_session")):
             failures.append(f"missing live session/IP/account gate: {label}")
         if h.event not in ALLOWED_NO_EVENT_GUARD and "_socket_event_guard" not in h.body:
             failures.append(f"missing central payload/rate guard: {label}")

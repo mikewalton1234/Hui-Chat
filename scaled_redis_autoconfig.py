@@ -100,6 +100,7 @@ def apply_scaled_redis_defaults(settings: dict[str, Any], *, annotate: bool = Tr
         "socketio_message_queue": False,
         "shared_state_redis_url": False,
         "db_pool_max": False,
+        "db_pool_wait_seconds": False,
     }
     if not isinstance(settings, dict):
         return changed
@@ -134,12 +135,21 @@ def apply_scaled_redis_defaults(settings: dict[str, Any], *, annotate: bool = Tr
 
     instances = _production_instances(settings)
     if instances > 1:
+        # Keep direct PostgreSQL connections bounded across the cluster, then
+        # queue short UI/Socket.IO bursts instead of failing immediately.
         safe_pool_max = max(5, min(50, 80 // instances))
         current_pool = _positive_int(settings.get("db_pool_max") or 50, 50, minimum=1)
         if current_pool > safe_pool_max:
             settings["db_pool_max"] = safe_pool_max
             settings.setdefault("db_pool_min", 1)
             changed["db_pool_max"] = True
+        try:
+            current_wait = float(settings.get("db_pool_wait_seconds", 0) or 0)
+        except Exception:
+            current_wait = 0.0
+        if current_wait < 10.0:
+            settings["db_pool_wait_seconds"] = 10
+            changed["db_pool_wait_seconds"] = True
 
     settings["auto_configure_scaled_redis"] = True
     if annotate and any(changed.values()):
@@ -162,7 +172,7 @@ def apply_scaled_runtime_safety_defaults(settings: dict[str, Any], *, annotate: 
 
 
 def redis_install_hint() -> str:
-    return "Install/start Redis first, for example on Arch: sudo pacman -S redis && sudo systemctl enable --now redis"
+    return "Install/start Valkey or Redis first; on Arch use: sudo pacman -S valkey && sudo systemctl enable --now valkey"
 
 
 def scaled_redis_summary_lines(settings: dict[str, Any], changed: dict[str, bool] | None = None) -> list[str]:
@@ -176,5 +186,6 @@ def scaled_redis_summary_lines(settings: dict[str, Any], changed: dict[str, bool
         f"  Socket.IO:    {settings.get('socketio_message_queue') or RECOMMENDED_SOCKETIO_QUEUE_REDIS}",
         f"  shared state: {settings.get('shared_state_redis_url') or RECOMMENDED_SHARED_STATE_REDIS}",
         f"  DB pool max: {settings.get('db_pool_max') or 'default'} per instance",
+        f"  DB pool burst wait: {settings.get('db_pool_wait_seconds') or 10}s",
         "Redis must still be installed and running on the server.",
     ]

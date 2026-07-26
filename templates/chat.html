@@ -55,7 +55,36 @@
   {% endfor %}
 </head>
 
-<body class="theme-light accent-default {{ client_device.body_class if client_device else 'ec-device-desktop' }}">
+<body class="theme-light accent-default{% if branding.loading_screen_enabled %} huiAppBooting{% endif %} {{ client_device.body_class if client_device else 'ec-device-desktop' }}">
+  {% if branding.loading_screen_enabled %}
+  <div
+    id="huiLoadingScreen"
+    class="huiLoadingScreen"
+    data-loading-mode="{{ branding.loading_screen_mode }}"
+    role="status"
+    aria-live="polite"
+    aria-atomic="true"
+    aria-label="Hui-Chat is loading"
+  >
+    <div class="huiLoadingStage{% if branding.loading_screen_mode == 'text' %} isTextOnly{% endif %}">
+      {% if branding.loading_screen_mode == 'animation' %}
+      <img
+        class="huiLoadingAnimation"
+        src="{{ branding.loading_url }}"
+        alt=""
+        decoding="async"
+        fetchpriority="high"
+      >
+      <div id="huiLoadingText" class="huiLoadingText">Starting Hui-Chat…</div>
+      {% else %}
+      <div id="huiLoadingText" class="huiLoadingText huiLoadingTextOnly">Loading…</div>
+      {% endif %}
+      {% if branding.loading_screen_mode == 'animation' %}
+      <div class="huiLoadingDots" aria-hidden="true"><span></span><span></span><span></span></div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
   <div id="appRoot" class="theme-light">
     <div class="autofillTrap" aria-hidden="true" style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;pointer-events:none;opacity:0;">
       <input type="text" tabindex="-1" autocomplete="username" />
@@ -79,7 +108,20 @@
     <!-- Left side: your website/content area -->
     <main id="siteArea">
       <header class="siteHeader">
-        <div class="siteBrand">{{ server_name }}</div>
+        <div class="siteBrand">
+          {% if branding.logo_enabled %}
+          <img
+            class="siteBrandLogo"
+            src="{{ branding.logo_url }}"
+            alt="{{ server_name }}"
+            height="52"
+            decoding="async"
+            style="display:block;width:auto;height:52px;max-width:190px;max-height:52px;object-fit:contain;"
+          >
+          {% else %}
+          <span class="siteBrandText">{{ server_name }}</span>
+          {% endif %}
+        </div>
         <div class="siteHint">Web GUI · v{{ app_version }}</div>
       </header>
 
@@ -306,7 +348,7 @@
                 <span class="srOnly">Text color</span>
                 <input id="roomEmbedTextColor" class="ecClassicColorInput" type="color" value="#111111" aria-label="Text color" />
               </label>
-              <button id="roomEmbedEmojiBtn" class="ym-toolBtn ym-emojiBtn ecToolbarEmoticonBtn" type="button" title="Emoticons" aria-label="Emoticons"><img class="ecToolbarEmoticonIcon" src="/static/emoticons/toolbar-happy-still.png" alt="" aria-hidden="true" draggable="false" /></button>
+              <button id="roomEmbedEmojiBtn" class="ym-toolBtn ym-emojiBtn ecToolbarEmoticonBtn" type="button" title="Emoticons" aria-label="Emoticons"><img class="ecToolbarEmoticonIcon" src="/emoticons/toolbar-happy-still.png" alt="" aria-hidden="true" draggable="false" /></button>
               <button id="roomEmbedTorrentBtn" class="ym-toolBtn" type="button" title="Share .torrent to this room">🧲</button>
               <button id="roomEmbedGifBtn" class="ym-toolBtn" type="button" title="Search GIFs">GIF</button>
               <button id="btnRoomEmbedVoice" class="ym-toolBtn ecClassicTextBtn" type="button" title="Voice chat for this room"><span aria-hidden="true">🎤</span><span class="ecToolBtnLabel">Voice</span></button>
@@ -812,15 +854,6 @@
                 </label>
 
                 <div class="muted smallText">Controls how custom status messages appear in the right-side buddy list.</div>
-              </div>
-
-              <div class="settingsSection">
-                <div class="settingsSubTitle">Account</div>
-                <div class="btnRow">
-                  <a href="/account/security" class="miniBtn" style="text-decoration:none;text-align:center;">Account Security</a>
-                  <a href="/enable-2fa" class="miniBtn" style="text-decoration:none;text-align:center;">SMS 2FA</a>
-                </div>
-                <div class="muted smallText">Manage password, sessions, and two-factor sign-in settings.</div>
               </div>
 
               <div class="settingsSection">

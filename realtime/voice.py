@@ -190,8 +190,8 @@ def register(socketio, settings, ctx):
 
     def _voice_dm_ttl(state: str = "active") -> float:
         if str(state or "") == "invited":
-            return max(float(settings.get("voice_dm_invite_ttl_seconds", 90) or 90), 60)
-        return max(float(settings.get("voice_dm_active_ttl_seconds", 3600) or 3600), 120)
+            return float(timing_int(settings, "voice_dm_invite_ttl_seconds"))
+        return float(timing_int(settings, "voice_dm_active_ttl_seconds"))
 
 
     def _event_bool(value, default: bool = False) -> bool:
@@ -941,7 +941,7 @@ def register(socketio, settings, ctx):
 
         # basic cooldown per socket
         now = time.time()
-        cooldown = float(settings.get("voice_invite_cooldown_seconds", 2) or 2)
+        cooldown = float(timing_int(settings, "voice_invite_cooldown_seconds"))
         last = VOICE_INVITE_LAST.get(sid, 0.0)
         if cooldown > 0 and (now - last) < cooldown:
             return {"success": False, "error": "Too many invites"}

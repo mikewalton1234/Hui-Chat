@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 420" role="img" aria-labelledby="title desc">
+  <title id="title">Hui Chat loading</title>
+  <desc id="desc">Animated Hui Chat loading screen</desc>
+  <defs>
+    <linearGradient id="bubble" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7dd3fc"/>
+      <stop offset="0.5" stop-color="#818cf8"/>
+      <stop offset="1" stop-color="#c084fc"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="150%">
+      <feDropShadow dx="0" dy="9" stdDeviation="11" flood-color="#111827" flood-opacity=".3"/>
+    </filter>
+    <style>
+      .dot{transform-origin:center;animation:pulse 1.2s ease-in-out infinite}
+      .d2{animation-delay:.15s}.d3{animation-delay:.3s}
+      @keyframes pulse{0%,70%,100%{opacity:.28;transform:scale(.72)}35%{opacity:1;transform:scale(1)}}
+    </style>
+  </defs>
+  <g filter="url(#shadow)">
+    <path fill="url(#bubble)" d="M86 42h548c28 0 50 22 50 50v154c0 28-22 50-50 50H287l-92 45 26-45H86c-28 0-50-22-50-50V92c0-28 22-50 50-50Z"/>
+    <path fill="#0f172a" opacity=".14" d="M287 296h347c28 0 50-22 50-50v-20c-120 52-317 77-463 58l-26 57 92-45Z"/>
+  </g>
+  <g fill="#fff" font-family="Inter,Segoe UI,Arial,sans-serif" font-weight="800" text-anchor="middle">
+    <text x="360" y="185" font-size="92" letter-spacing="-4">Hui Chat</text>
+    <text x="360" y="235" font-size="24" font-weight="600" opacity=".9" letter-spacing="5">CONNECT • CHAT • SHARE</text>
+  </g>
+  <g fill="#818cf8">
+    <circle class="dot d1" cx="322" cy="374" r="10"/>
+    <circle class="dot d2" cx="360" cy="374" r="10"/>
+    <circle class="dot d3" cx="398" cy="374" r="10"/>
+  </g>
+</svg>

@@ -1,0 +1,6 @@
+# Optional dependencies for the continuous review system.
+# Keep these separate from Hui Chat's runtime dependencies.
+openai>=2.45.0,<3
+ruff>=0.12,<1
+bandit>=1.8,<2
+pip-audit>=2.9,<3

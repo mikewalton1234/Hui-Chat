@@ -24,7 +24,7 @@ from datetime import timedelta, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from flask import Flask, request, g, session
+from flask import Flask, request, g, session, current_app
 from werkzeug.exceptions import RequestEntityTooLarge
 from flask_jwt_extended import JWTManager
 from flask_limiter import Limiter
@@ -60,7 +60,8 @@ from constants import APP_VERSION, DEFAULT_SERVER_NAME, sanitize_postgres_dsn, g
 from werkzeug.middleware.proxy_fix import ProxyFix
 from secrets_policy import persist_secrets_enabled, scrub_secrets_for_persist
 from secret_manager import ensure_secret, is_strong_secret, missing_core_or_crypto, resolve_secret
-from scaled_redis_autoconfig import apply_scaled_runtime_safety_defaults, redis_install_hint
+from scaled_redis_autoconfig import redis_install_hint
+from runtime_timing import timing_float, timing_int
 from preflight import run_preflight, log_preflight_summary
 from account_creation_policy import password_policy_metadata
 from db.core import prepare_runtime_database
@@ -85,6 +86,7 @@ from routes_main import register_main_routes
 from routes_chat import chat_bp
 from routes_groups import register_group_routes
 from routes_admin_tools import register_admin_tools
+from branding import branding_template_context
 from moderation_routes import register_moderation_routes
 from routes_media import register_media_routes
 from media_mode import client_av_config, media_permissions_policy
@@ -278,7 +280,7 @@ def _get_socketio_message_queue(settings: Dict[str, Any], *, worker_count: int =
     return candidate
 
 
-def _require_redis_connectivity(redis_url: str) -> None:
+def _require_redis_connectivity(redis_url: str, settings: dict[str, Any]) -> None:
     """Fail fast if a Redis message queue is configured but not reachable."""
     if not redis_url:
         return
@@ -292,9 +294,9 @@ def _require_redis_connectivity(redis_url: str) -> None:
 
         client = redis.Redis.from_url(
             redis_url,
-            socket_connect_timeout=1,
-            socket_timeout=1,
-            health_check_interval=10,
+            socket_connect_timeout=timing_float(settings, "redis_connect_timeout_seconds"),
+            socket_timeout=timing_float(settings, "redis_socket_timeout_seconds"),
+            health_check_interval=timing_int(settings, "redis_health_check_interval_seconds"),
         )
         client.ping()
         logging.info("[socketio] Redis message queue reachable")
@@ -689,13 +691,11 @@ def _log_connected_database_identity(settings: Dict[str, Any], ident: Dict[str, 
 
 
 def _db_pool_bounds_for_runtime(settings: Dict[str, Any]) -> tuple[int, int]:
-    """Return DB pool min/max adjusted for the current instance topology.
+    """Return the configured DB pool bounds for the current topology.
 
-    Single-process LAN/dev mode keeps the historical larger pool because the UI
-    can burst through reconnects and admin polling.  Scaled production must not
-    force every instance to 50 connections; ten one-worker instances at 50 each
-    can exceed a normal local PostgreSQL max_connections setting before users
-    even arrive.
+    Setup and the production guard own capacity tuning. Runtime must honor a
+    deliberately smaller pool instead of silently forcing 50 connections on a
+    small host; short bursts queue through db_pool_wait_seconds.
     """
     instances = _production_instance_count(settings)
     cfg_min = _safe_int(settings.get("db_pool_min", 1), 1, name="db_pool_min", minimum=1, maximum=25)
@@ -712,10 +712,7 @@ def _db_pool_bounds_for_runtime(settings: Dict[str, Any]) -> tuple[int, int]:
     else:
         cfg_max = _safe_int(raw_max, 50 if instances <= 1 else 10, name="db_pool_max", minimum=1, maximum=100)
 
-    if instances <= 1 and cfg_max < 50:
-        logging.warning("db_pool_max=%s is low for single-instance UI bursts; forcing to 50", cfg_max)
-        cfg_max = 50
-    elif instances > 1 and cfg_max > 25:
+    if instances > 1 and cfg_max > 25:
         logging.warning(
             "db_pool_max=%s with %s instances can open up to %s database connections; consider 5-15 per instance or PgBouncer",
             cfg_max,
@@ -790,18 +787,15 @@ def _initialize_database_stack(app: Flask, settings: Dict[str, Any]) -> None:
         # Defensive DSN sanitisation (common: pasted placeholder angle brackets)
         if settings.get("database_url"):
             settings["database_url"] = str(sanitize_postgres_dsn(str(settings["database_url"])))
-        # Optional Postgres connection pooling (defaults are safe for dev).
-        # NOTE: In practice, the web UI can create short bursts of requests (page reloads,
-        # multiple tabs, admin polling, socket reconnect recovery). If db_pool_max is too small,
-        # Postgres pooling exhausts and anything DB-backed (missed PM delivery/ack, rooms list,
-        # invites, etc.) becomes flaky.
-        # We therefore enforce a sane *floor* for dev so the app remains stable even if an
-        # older server_config.json has db_pool_max=10.
+        # Optional PostgreSQL connection pooling. Setup/production guards tune
+        # capacity, and db_pool_wait_seconds absorbs short UI/reconnect bursts.
+        # Honor the saved pool instead of silently expanding it at runtime.
         cfg_min, cfg_max = _db_pool_bounds_for_runtime(settings)
         init_db_pool(
             minconn=cfg_min,
             maxconn=cfg_max,
             dsn=str(settings.get("database_url")) if settings.get("database_url") else None,
+            wait_timeout_seconds=settings.get("db_pool_wait_seconds", 10),
         )
         init_database()
 
@@ -844,7 +838,7 @@ def _create_socketio_instance(app: Flask, settings: Dict[str, Any], cors_origins
     # Do not rely on generic REDIS_URL; Hui Chat keeps Redis DBs separated.
     message_queue = socketio_profile.get("message_queue")
     if message_queue:
-        _require_redis_connectivity(message_queue)
+        _require_redis_connectivity(message_queue, settings)
 
     # Keep this as a plain cookie name for python-engineio compatibility.
     # Some Engine.IO versions concatenate cookie attributes as strings and crash
@@ -860,8 +854,8 @@ def _create_socketio_instance(app: Flask, settings: Dict[str, Any], cors_origins
         always_connect=True,
         logger=False,
         engineio_logger=False,
-        ping_interval=20,
-        ping_timeout=15,
+        ping_interval=timing_int(settings, "socketio_ping_interval_seconds"),
+        ping_timeout=timing_int(settings, "socketio_ping_timeout_seconds"),
         transports=socketio_profile["transports"],
         max_http_buffer_size=socketio_profile["max_http_buffer_size"],
         message_queue=message_queue,
@@ -990,7 +984,25 @@ def create_app(
     """
 
     settings_file = Path(settings_file) if isinstance(settings_file, str) else settings_file
-    apply_scaled_runtime_safety_defaults(settings)
+
+    # Never auto-rewrite topology at application-import time. Direct WSGI/Gunicorn
+    # launches must see the same blocking production conflicts as main.py rather
+    # than silently receiving Redis URLs or smaller database pools in memory.
+    run_mode = str(settings.get("run_mode") or "").strip().lower().replace("_", "-")
+    production_requested = run_mode in {"production", "prod", "public", "public-beta"} or bool(settings.get("production_mode"))
+    if production_requested:
+        from production_config_guard import blocking_production_conflicts
+        conflicts = blocking_production_conflicts(settings, live_check=False)
+        if conflicts:
+            detail = "; ".join(conflicts[:8])
+            if len(conflicts) > 8:
+                detail += f"; and {len(conflicts) - 8} more conflict(s)"
+            raise RuntimeError(
+                "Hui Chat refused direct WSGI startup because production settings conflict: "
+                + detail
+                + ". Run: python main.py --production-config-fix --production-live-check"
+            )
+
     # Make secrets admin-friendly: if setup/config scrubbed secrets out of JSON,
     # generate stable values and store them in a protected .env before any public
     # readiness guard or at-rest crypto helper can fall back to one-off material.
@@ -1137,10 +1149,15 @@ def create_app(
     def inject_hui_template_globals():
         server_name = str(settings.get("server_name") or DEFAULT_SERVER_NAME).strip() or DEFAULT_SERVER_NAME
         password_policy = password_policy_metadata()
+        branding = branding_template_context(
+            settings,
+            current_app.config.get("HUI_SETTINGS_FILE"),
+        )
         return {
             "server_name": server_name,
             "server_name_admin": f"{server_name} Admin",
             "app_version": APP_VERSION,
+            "branding": branding,
             "csp_nonce": _get_csp_nonce(),
             "socketio_client_url": str(settings.get("socketio_client_url") or "/static/vendor/socket.io.min.js").strip(),
             "password_policy": password_policy.get("summary"),
@@ -1176,7 +1193,7 @@ def create_app(
         # Defaults in Flask-JWT-Extended are short (15 minutes). For dev UX we
         # use a longer access token and rely on refresh to keep sessions alive.
         JWT_ACCESS_TOKEN_EXPIRES=timedelta(minutes=_safe_int(settings.get("access_token_minutes", 30), 30, name="access_token_minutes", minimum=1, maximum=1440)),
-        JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=_safe_int(settings.get("refresh_token_days", 7), 7, name="refresh_token_days", minimum=1, maximum=90)),
+        JWT_REFRESH_TOKEN_EXPIRES=timedelta(days=_safe_int(settings.get("refresh_token_days", 7), 7, name="refresh_token_days", minimum=1, maximum=365)),
 
         # Flask-WTF's global CSRF protection conflicts with our JSON APIs.
         # We validate CSRF manually on HTML forms, and rely on JWT's CSRF tokens
@@ -1238,7 +1255,7 @@ def create_app(
             # Versioned static assets are requested as /static/...?...v=<APP_VERSION>.
             # Treat those URLs as immutable so reloads do not generate dozens of
             # conditional requests for split chat runtime files, CSS, and lazy-loaded vendor files.
-            static_asset_roots = ("/static/css/", "/static/js/", "/static/vendor/", "/static/emoticons/")
+            static_asset_roots = ("/static/css/", "/static/js/", "/static/vendor/")
             if request.path.startswith(static_asset_roots) and request.args.get("v"):
                 resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
 
@@ -1390,6 +1407,9 @@ def create_app(
         app.config["HUI_SIMPLE_RATE_LIMIT_REDIS_URL"] = simple_guard_storage_uri
     else:
         app.config["HUI_SIMPLE_RATE_LIMIT_REDIS_URL"] = ""
+    app.config["HUI_REDIS_CONNECT_TIMEOUT_SECONDS"] = timing_float(settings, "redis_connect_timeout_seconds")
+    app.config["HUI_REDIS_SOCKET_TIMEOUT_SECONDS"] = timing_float(settings, "redis_socket_timeout_seconds")
+    app.config["HUI_REDIS_HEALTH_CHECK_INTERVAL_SECONDS"] = timing_int(settings, "redis_health_check_interval_seconds")
     if limiter is None:
         limiter = Limiter(
             key_func=lambda: get_request_ip(),

@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from database import cleanup_expired_custom_rooms, cleanup_expired_room_messages, cleanup_expired_autoscaled_rooms
+from runtime_timing import timing_int
 from maintenance_cleanup import (
     cleanup_expired_auth_artifacts,
     cleanup_revoked_private_files,
@@ -77,11 +78,7 @@ def _coerce_idle_minutes(settings: dict, minute_key: str, hour_key: str, default
 
 
 def _coerce_interval_seconds(settings: dict) -> int:
-    try:
-        interval = int(settings.get("janitor_interval_seconds", 60))
-    except Exception:
-        interval = 60
-    return max(10, min(interval, 3600))
+    return timing_int(settings, "janitor_interval_seconds")
 
 
 def _coerce_limit(settings: dict, key: str, default: int = 500) -> int:

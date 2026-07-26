@@ -32,7 +32,18 @@
         {% if two_factor_pending %}
         <div class="authStack">
           <form method="POST" class="authCard authCardCompact authStack">
-              <div class="authServerName">{{ server_name }}</div>
+              <div class="authBrand">
+                {% if branding.logo_enabled %}
+                <img
+                  class="authLogo"
+                  src="{{ branding.logo_url }}"
+                  alt="{{ server_name }}"
+                  decoding="async"
+                >
+                {% else %}
+                <div class="authServerName">{{ server_name }}</div>
+                {% endif %}
+              </div>
               <div class="authVersion">v{{ app_version }}</div>
               <h2 class="authTitle">Text message verification</h2>
               <p class="authSubtitle">Finish signing in with the code sent to your phone.</p>
@@ -64,7 +75,18 @@
         </div>
         {% else %}
         <form method="POST" class="authCard authStack">
-            <div class="authServerName">{{ server_name }}</div>
+            <div class="authBrand">
+                {% if branding.logo_enabled %}
+                <img
+                  class="authLogo"
+                  src="{{ branding.logo_url }}"
+                  alt="{{ server_name }}"
+                  decoding="async"
+                >
+                {% else %}
+                <div class="authServerName">{{ server_name }}</div>
+                {% endif %}
+              </div>
             <div class="authVersion">v{{ app_version }}</div>
             <h2 class="authTitle">Login</h2>
             <p class="authSubtitle">Sign in, then use Rooms / Chat / Hub from the phone navigation.</p>

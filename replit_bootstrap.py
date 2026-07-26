@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 
 # Load .env first
 from env_loader import load_project_dotenv
+from runtime_timing import DEFAULT_RUNTIME_TIMING
 load_project_dotenv()
 
 DATABASE_URL = os.environ["DATABASE_URL"]
@@ -112,6 +113,9 @@ config = {
     "dynamic_dns_enabled": False,
     "auto_configure_scaled_redis": False,
 }
+# Replit must use the same Socket.IO, Redis, voice, P2P, janitor, and IP-ban
+# timing policy as the normal setup wizard.
+config.update(DEFAULT_RUNTIME_TIMING)
 
 config_path = Path("server_config.json")
 config_path.write_text(json.dumps(config, indent=2))

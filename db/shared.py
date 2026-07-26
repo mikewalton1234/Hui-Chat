@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 import os
+import threading
 
 from psycopg2.pool import ThreadedConnectionPool
 
@@ -32,3 +33,5 @@ _POOL_INIT_ERROR: str | None = None
 _ALLOW_DIRECT_FALLBACK: bool = False
 _DB_POOL_MAX: int | None = None
 _DB_POOL_MIN: int | None = None
+_DB_POOL_WAIT_SECONDS: float = 10.0
+_POOL_CONDITION = threading.Condition()

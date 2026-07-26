@@ -48,6 +48,7 @@ from account_status import account_can_authenticate, account_status_error_code, 
 from room_name_policy import validate_room_name_format
 from hui_voice_protocol import hui_voice_room_capacity, hui_voice_room_limit
 from emoticon_catalog import filter_excess_emoticon_shortcuts, clamp_max_emoticons_per_message
+from runtime_timing import timing_int
 
 # Shared in-memory state is centralized in realtime.state so handler modules can be split safely.
 from realtime.state import (
@@ -879,7 +880,7 @@ def register_socketio_handlers(socketio, settings):
         return False
 
     def _cleanup_p2p_file_sessions() -> None:
-        ttl = _safe_p2p_int_setting("p2p_file_session_ttl_seconds", 900, min_value=30, max_value=86400)
+        ttl = timing_int(settings, "p2p_file_session_ttl_seconds")
         now = time.time()
         with P2P_FILE_SESSIONS_LOCK:
             stale = [
@@ -897,8 +898,8 @@ def register_socketio_handlers(socketio, settings):
                 P2P_FILE_RECENT_TRANSFER_IDS.pop(tid, None)
 
     def _cleanup_voice_dm_sessions() -> None:
-        invite_ttl = float(settings.get("voice_dm_invite_ttl_seconds", 90) or 90)
-        active_ttl = float(settings.get("voice_dm_active_ttl_seconds", 3600) or 3600)
+        invite_ttl = float(timing_int(settings, "voice_dm_invite_ttl_seconds"))
+        active_ttl = float(timing_int(settings, "voice_dm_active_ttl_seconds"))
         now = time.time()
         for cid, s in list(voice_dm_session_items()):
             state = str(s.get("state") or "")
@@ -2215,10 +2216,7 @@ def register_socketio_handlers(socketio, settings):
         if str(sess.get("state") or "") != "active":
             return None, {"success": False, "error": "Call not active"}
         sess["updated"] = time.time()
-        try:
-            ttl = max(float(settings.get("voice_dm_active_ttl_seconds", 3600) or 3600), 120)
-        except Exception:
-            ttl = 3600
+        ttl = float(timing_int(settings, "voice_dm_active_ttl_seconds"))
         voice_dm_session_set(call_id, sess, ttl_seconds=ttl)
         return sess, None
 

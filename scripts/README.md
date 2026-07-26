@@ -63,3 +63,13 @@ Verify the generated package with:
 python tools/release_packaging_doctor.py
 python tools/release_packaging_deep_doctor.py
 ```
+
+## Complete server installer
+
+For Arch/EndeavourOS or Debian/Ubuntu:
+
+```bash
+sudo bash scripts/install_server.sh
+```
+
+This provisions the service account, virtual environment, PostgreSQL database, Valkey/Redis, protected secrets, setup-only wizard flow, migrations, readiness checks, and systemd services. Re-running the installer preserves stable credentials/secrets, stops every active Hui Chat instance before synchronizing code, and restarts the topology selected by `server_config.json`.

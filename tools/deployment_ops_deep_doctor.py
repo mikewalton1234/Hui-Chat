@@ -41,7 +41,7 @@ def _check_web_unit(failures: list[str], rel: str, *, direct_gunicorn: bool = Fa
     required = [
         "ExecStartPre=",
         "tools/config_doctor.py --config",
-        "--redis-socketio-check",
+        "--redis-socketio-check --redis-blocking-only",
         "HUI_CONFIG=",
         "HUI_WORKERS=1",
         "EnvironmentFile=/etc/hui/hui-chat.env",
@@ -50,7 +50,7 @@ def _check_web_unit(failures: list[str], rel: str, *, direct_gunicorn: bool = Fa
         "ReadWritePaths=/opt/hui/hui-chat/instance",
         "ReadWritePaths=/opt/hui/hui-chat/static/uploads",
         "ReadWritePaths=/opt/hui/hui-chat/server_config.json",
-        "After=network-online.target redis.service",
+        "After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service",
     ]
     if not direct_gunicorn:
         required.append("HUI_PRODUCTION_WORKERS=1")
@@ -69,8 +69,8 @@ def _check_janitor_unit(failures: list[str], rel: str) -> None:
         "ExecStartPre=",
         "tools/config_doctor.py --config",
         "janitor_runner.py --config",
-        "After=network-online.target redis.service",
-        "Wants=network-online.target redis.service",
+        "After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service",
+        "Wants=network-online.target",
         "ReadWritePaths=/opt/hui/hui-chat/private_uploads",
         "ReadWritePaths=/opt/hui/hui-chat/uploads",
         "ReadWritePaths=/opt/hui/hui-chat/instance",
@@ -109,8 +109,8 @@ def main() -> int:
     }
     generated_janitor = generate_janitor_service(sample)
     _assert_contains(failures, "generated janitor service", generated_janitor, [
-        "After=network-online.target redis.service",
-        "Wants=network-online.target redis.service",
+        "After=network-online.target postgresql.service valkey.service valkey-server.service redis.service redis-server.service",
+        "Wants=network-online.target",
         "janitor_runner.py --config",
         'WorkingDirectory="/tmp/Hui Chat S19 Deep"',
     ])
