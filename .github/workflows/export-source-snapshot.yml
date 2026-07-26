@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/add-multi-agent-review
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,6 +17,8 @@ jobs:
     steps:
       - name: Check out branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Create source archive
         run: |
@@ -25,7 +30,7 @@ jobs:
       - name: Upload source archive
         uses: actions/upload-artifact@v4
         with:
-          name: hui-branch-source-${{ github.sha }}
+          name: hui-branch-source-${{ github.event.pull_request.head.sha || github.sha }}
           path: ${{ runner.temp }}/hui-branch-source.tar.gz
           if-no-files-found: error
           retention-days: 1
