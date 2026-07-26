@@ -1,0 +1,70 @@
+name: Apply beta.459 source sync
+
+on:
+  push:
+    branches:
+      - agent/add-multi-agent-review
+    paths:
+      - _sync_payload/READY
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out target branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/add-multi-agent-review
+          fetch-depth: 0
+
+      - name: Reconstruct and verify sync payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat _sync_payload/part-* | base64 --decode > "$RUNNER_TEMP/hui-sync.tar.xz"
+          echo "0011fc5a63a6bae8fade3108ab76ac20309cc8c420709748aa432fda6b9d7ead  $RUNNER_TEMP/hui-sync.tar.xz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/hui-sync"
+          tar -xJf "$RUNNER_TEMP/hui-sync.tar.xz" -C "$RUNNER_TEMP/hui-sync"
+          echo "85b7b9010f307c18c998cb022993ef50ce48c56282ac28d96b0a27de42a253c9  $RUNNER_TEMP/hui-sync/sync.patch" | sha256sum -c -
+
+      - name: Apply audited beta.459 tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --whitespace=nowarn "$RUNNER_TEMP/hui-sync/sync.patch"
+          while IFS= read -r path; do
+            [[ -n "$path" ]] && rm -rf -- "$path"
+          done < "$RUNNER_TEMP/hui-sync/delete.txt"
+          rm -rf _sync_payload
+          rm -f .github/workflows/apply-beta459-sync.yml
+
+      - name: Verify synchronized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(cat VERSION.txt)" = "0.11.0-beta.459"
+          python -m compileall -q .
+          if command -v node >/dev/null 2>&1; then
+            find static/js -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+          fi
+          python tools/runtime_timing_consistency_doctor.py
+          python tools/production_config_guard_doctor.py
+          python tools/server_installation_doctor.py
+          python tools/moderation_doctor.py
+          python tools/multi_agent_review_doctor.py
+          test ! -e _sync_probe.txt
+          test ! -e .github/workflows/export-source-snapshot.yml
+
+      - name: Commit synchronized source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "Hui Chat Release Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Sync beta.459 production setup hardening"
+          git push origin HEAD:agent/add-multi-agent-review
