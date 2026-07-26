@@ -1,4 +1,4 @@
 archive_sha256=291328c57506d385f5a26d91ce4bcb18ba8d1408c7222a23481bce7b56e0d2d1
 patch_sha256=f2d40f48b38d33b7866107670a828e7a274c9a31b45140916df28555070b1aca
 version=0.11.0-beta.459
-trigger=pr-sync-2
+trigger=pr-sync-3-corrected-chunk
